@@ -10,17 +10,12 @@ import gzip
 import json
 import random
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import nba_api.live.nba.endpoints as live_endpoints
 import nba_api.stats.endpoints as stats_endpoints
-
-ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
-RAW_DIR = DATA / "raw"
-LOG_DIR = DATA / "logs"
 
 # Use nba_api's own default headers. Custom "browser-like" headers (Chrome UA,
 # Origin, Accept-Language) made stats.nba.com hang until timeout on 2026-11-19,
@@ -58,7 +53,7 @@ def call(source: str, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
             return cls(**params, timeout=TIMEOUT_S).get_dict()
         except Exception as err:  # timeouts, bad JSON, 4xx/5xx surfaced as parse errors
             last_err = err
-            time.sleep(2 ** attempt * 3)
+            time.sleep(2**attempt * 3)
     raise PullError(f"{endpoint} {params} failed after {MAX_TRIES} tries: {last_err!r}") from last_err
 
 
@@ -66,7 +61,7 @@ def save(path: Path, source: str, endpoint: str, params: dict[str, Any], data: d
     path.parent.mkdir(parents=True, exist_ok=True)
     doc = {
         "request": {"source": source, "endpoint": endpoint, "params": params},
-        "pulled_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "pulled_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "response": data,
     }
     tmp = path.with_suffix(".tmp")

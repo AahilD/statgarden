@@ -1,12 +1,13 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type FieldMeta } from "@/lib/api";
 import { LIMITS, type Filter, type Mode, type PivotSpec } from "@/lib/spec";
 import { canDrop, clearChart, isComplete, removeAt, setFilter, setMode, type ChartWell, type Well } from "@/lib/specOps";
 import { TONE, WELL_TONE, type Tone } from "@/lib/tones";
+import { usePopover } from "@/lib/usePopover";
 
 type SetSpec = (fn: (s: PivotSpec) => PivotSpec) => void;
 
@@ -19,7 +20,7 @@ export function Wells(p: { spec: PivotSpec; setSpec: SetSpec; fields: Map<string
   const filters = p.spec.filters.filter((f) => !TOOLBAR_FILTERS.has(f.field));
 
   return (
-    <div className="grid gap-2.5 rounded-[12px] border border-line bg-surface p-3 sm:grid-cols-[96px_1fr] sm:gap-x-3">
+    <div className="grid gap-2.5 rounded-card border border-line bg-surface p-3 sm:grid-cols-[96px_1fr] sm:gap-x-3">
       <WellRow id="values" title="Values" hint="Numbers to show, e.g. Points" dragging={p.dragging} full={p.spec.values.length >= LIMITS.values}>
         {p.spec.values.map((v, i) => {
           const f = p.fields.get(v.field);
@@ -101,11 +102,11 @@ function WellRow(p: { id: Well; title: string; hint: string; dragging: FieldMeta
   return (
     <>
       <div className="flex items-center sm:pt-1.5 sm:items-start">
-        <span className={`title-caps rounded-[6px] px-2 py-1 text-[11px] tracking-[0.1em] ${tone.block}`}>{p.title}</span>
+        <span className={`title-caps rounded-chip px-2 py-1 text-[11px] tracking-[0.1em] ${tone.block}`}>{p.title}</span>
       </div>
       <div
         ref={setNodeRef}
-        className={`flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-[8px] border-2 px-2 py-1.5 transition-colors ${
+        className={`flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-btn border-2 px-2 py-1.5 transition-colors ${
           isOver && accepts
             ? `${tone.border} ${tone.soft}`
             : accepts
@@ -126,7 +127,7 @@ function Chip(p: { tone: Tone; onRemove: () => void; children: React.ReactNode; 
   const t = TONE[p.tone];
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-[6px] py-1 pl-2.5 pr-1 text-sm font-medium ${
+      className={`inline-flex items-center gap-1 rounded-chip py-1 pl-2.5 pr-1 text-sm font-medium ${
         p.incomplete ? `border-2 border-dashed ${t.dashed} bg-transparent text-ink` : t.block
       }`}
     >
@@ -165,21 +166,7 @@ function describe(f: Filter, field?: FieldMeta) {
 }
 
 function FilterChip(p: { filter: Filter; field?: FieldMeta; setSpec: SetSpec }) {
-  const [open, setOpen] = useState(!isComplete(p.filter));
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", esc);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", esc);
-    };
-  }, [open]);
+  const { open, setOpen, ref } = usePopover(!isComplete(p.filter));
 
   const remove = () => p.setSpec((s) => ({ ...s, filters: s.filters.filter((f) => f.field !== p.filter.field) }));
   return (
@@ -188,7 +175,7 @@ function FilterChip(p: { filter: Filter; field?: FieldMeta; setSpec: SetSpec }) 
         {describe(p.filter, p.field)}
       </Chip>
       {open && p.field && (
-        <div className="absolute left-0 top-full z-30 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-[12px] border border-line bg-surface-2 p-3 shadow-xl">
+        <div className="absolute left-0 top-full z-30 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-card border border-line bg-surface-2 p-3 shadow-xl">
           {p.field.kind === "dimension" ? (
             <ValuePicker filter={p.filter} field={p.field} setSpec={p.setSpec} />
           ) : (
@@ -230,13 +217,13 @@ function ValuePicker(p: { filter: Filter; field: FieldMeta; setSpec: SetSpec }) 
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search"
-        className="mt-2 w-full rounded-[8px] border border-line bg-bg px-2.5 py-1.5 text-sm focus:border-accent focus:outline-none"
+        className="mt-2 w-full rounded-btn border border-line bg-bg px-2.5 py-1.5 text-sm focus:border-accent focus:outline-none"
       />
       <ul className="mt-2 max-h-56 overflow-y-auto">
         {isLoading && <li className="py-2 text-sm text-ink-2">Loading…</li>}
         {data?.values.map((v) => (
           <li key={String(v)}>
-            <label className="flex cursor-pointer items-center gap-2 rounded-[6px] px-1.5 py-1 text-sm hover:bg-bg">
+            <label className="flex cursor-pointer items-center gap-2 rounded-chip px-1.5 py-1 text-sm hover:bg-bg">
               <input type="checkbox" checked={chosen.includes(v)} onChange={() => toggle(v)} className="accent-[var(--red)]" />
               {String(v)}
             </label>
@@ -256,7 +243,7 @@ function NumberFilter(p: { filter: Filter; setSpec: SetSpec }) {
         <select
           value={p.filter.op}
           onChange={(e) => p.setSpec((s) => setFilter(s, p.filter.field, { op: e.target.value as Filter["op"] }))}
-          className="rounded-[8px] border border-line bg-bg px-2 py-1.5 font-mono text-sm"
+          className="rounded-btn border border-line bg-bg px-2 py-1.5 font-mono text-sm"
         >
           {NUM_OPS.map((o) => (
             <option key={o} value={o}>
@@ -274,7 +261,7 @@ function NumberFilter(p: { filter: Filter; setSpec: SetSpec }) {
               setFilter(s, p.filter.field, { value: e.target.value === "" ? null : Number(e.target.value) }),
             )
           }
-          className="w-full rounded-[8px] border border-line bg-bg px-2.5 py-1.5 font-mono text-sm focus:border-accent focus:outline-none"
+          className="w-full rounded-btn border border-line bg-bg px-2.5 py-1.5 font-mono text-sm focus:border-accent focus:outline-none"
         />
       </div>
       <p className="mt-2 text-xs text-ink-2">Keeps only the games that meet this, before anything is added up.</p>

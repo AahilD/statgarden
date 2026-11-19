@@ -16,8 +16,11 @@ const nextConfig: NextConfig = {
     },
   },
   async redirects() {
-    // the builder used to live at /build; old shared links keep working (query string is kept)
-    return [{ source: "/build", destination: "/explore", permanent: true }];
+    // the builder used to live at /build, then /explore; old shared links keep working (query string is kept)
+    return [
+      { source: "/build", destination: "/lab", permanent: true },
+      { source: "/explore", destination: "/lab", permanent: true },
+    ];
   },
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${API_URL}/:path*` }];

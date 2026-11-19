@@ -17,6 +17,7 @@ the catalog. Filter values are always bound parameters.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -25,6 +26,10 @@ from api.spec import PivotSpec
 
 MAX_LONG_ROWS = 50_000
 
+# how each mode reads in labels ("Points per game") and short headers ("PTS/G")
+MODE_SUFFIX = {"total": "", "per_game": " per game", "per_36": " per 36"}
+MODE_SHORT = {"total": "", "per_game": "/G", "per_36": "/36"}
+
 
 class SpecError(ValueError):
     """The spec asks for something the catalog doesn't allow."""
@@ -32,7 +37,7 @@ class SpecError(ValueError):
 
 @dataclass
 class ValueCol:
-    key: str          # e.g. "pts:per_game"; column name in the result
+    key: str  # e.g. "pts:per_game"; column name in the result
     field: FieldDef
     mode: str
     label: str
@@ -42,7 +47,6 @@ class ValueCol:
 class Query:
     sql: str
     params: list[Any]
-    dims: list[str]                      # row + column field ids, in order
     row_dims: list[str]
     col_dims: list[str]
     values: list[ValueCol] = field(default_factory=list)
@@ -82,6 +86,7 @@ def _value_expr(cat: Catalog, f: FieldDef, mode: str, agg_over: str = "") -> str
     re-total groups across column fields. Every base column is a plain sum or
     count, so summing them again is exact.
     """
+
     def b(fid: str) -> str:
         col = _base_col(fid)
         return f"sum({col})" if agg_over else col
@@ -130,8 +135,7 @@ def build(spec: PivotSpec, cat: Catalog) -> Query:
         key = value_key(f.id, mode)
         if any(x.key == key for x in values):
             continue
-        suffix = {"per_game": " per game", "per_36": " per 36", "total": ""}[mode]
-        values.append(ValueCol(key, f, mode, f.label + suffix))
+        values.append(ValueCol(key, f, mode, f.label + MODE_SUFFIX[mode]))
 
     # which summed base columns the values need
     bases: dict[str, str] = {"__games": "count(*)"}
@@ -166,7 +170,7 @@ def build(spec: PivotSpec, cat: Catalog) -> Query:
             params += list(val)
         elif op == "contains":
             where.append(f"strip_accents(lower(cast({expr} as varchar))) LIKE ?")
-            params.append(f"%{_fold(str(val))}%")
+            params.append(f"%{fold(str(val))}%")
         else:
             where.append(f"{expr} {op} ?")
             params.append(val)
@@ -189,7 +193,7 @@ def build(spec: PivotSpec, cat: Catalog) -> Query:
         f"  SELECT {', '.join(dim_select + [f'{e} AS {_base_col(k)}' for k, e in bases.items()])}\n"
         f"  FROM {ds.table}\n"
         + (f"  WHERE {' AND '.join(where)}\n" if where else "")
-        + (f"  GROUP BY ALL" if dim_select else "")
+        + ("  GROUP BY ALL" if dim_select else "")
     )
 
     # sort: a value key or a dimension; default the first value, descending
@@ -209,8 +213,11 @@ def build(spec: PivotSpec, cat: Catalog) -> Query:
 
     ctes = [f"grp AS (\n{grp}\n)"]
     if col_fields and row_cols:
-        top_order = (f"{_value_expr(cat, sort_expr.field, sort_expr.mode, agg_over='sum')}"
-                     if isinstance(sort_expr, ValueCol) else sort_expr)
+        top_order = (
+            f"{_value_expr(cat, sort_expr.field, sort_expr.mode, agg_over='sum')}"
+            if isinstance(sort_expr, ValueCol)
+            else sort_expr
+        )
         ctes.append(
             f"top AS (\n  SELECT {', '.join(row_cols)} FROM grp GROUP BY {', '.join(row_cols)}\n"
             f"  ORDER BY {top_order} {sort_dir.upper()} {nulls} LIMIT {spec.limit}\n)"
@@ -221,7 +228,7 @@ def build(spec: PivotSpec, cat: Catalog) -> Query:
         source = "grp"
         limit_sql = f"LIMIT {spec.limit}"
 
-    order = (_q(sort_expr.key) if isinstance(sort_expr, ValueCol) else sort_expr)
+    order = _q(sort_expr.key) if isinstance(sort_expr, ValueCol) else sort_expr
     sql = (
         "WITH " + ",\n".join(ctes) + "\n"
         f"SELECT {', '.join(dim_cols + final_values)}\n"
@@ -229,10 +236,9 @@ def build(spec: PivotSpec, cat: Catalog) -> Query:
         f"ORDER BY {order} {sort_dir.upper()} {nulls}" + (f", {', '.join(dim_cols)}" if dim_cols else "") + "\n"
         f"{limit_sql}"
     )
-    return Query(sql, params, [f.id for f in dims], [f.id for f in row_fields],
-                 [f.id for f in col_fields], values)
+    return Query(sql, params, [f.id for f in row_fields], [f.id for f in col_fields], values)
 
 
-def _fold(s: str) -> str:
-    import unicodedata
+def fold(s: str) -> str:
+    """Lower case without accents, to match DuckDB's strip_accents(lower(...))."""
     return "".join(c for c in unicodedata.normalize("NFKD", s.lower()) if not unicodedata.combining(c))

@@ -15,17 +15,17 @@ import json
 import re
 import time
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import duckdb
 import pyarrow as pa
 
-from ingest.client import DATA, RAW_DIR, read
+from ingest.client import read
+from ingest.paths import DB_PATH, RAW_DIR
 from ingest.registry import load_registry
 
-DB_PATH = DATA / "statgarden.duckdb"
 BATCH_FILES = 300
 SKIP_KEYS = {"meta", "parameters", "resource"}
 SIDE_KEYS = {"homeTeam": "home", "awayTeam": "away"}
@@ -33,6 +33,7 @@ SEASON_TYPE_PARAMS = ("season_type_all_star", "season_type", "season_type_playof
 
 
 # ── names ───────────────────────────────────────────────────────────────────
+
 
 def snake(name: str) -> str:
     if any(c.islower() for c in name):  # camelCase -> camel_case; leave FG3M alone
@@ -61,6 +62,7 @@ def _carries(key: str) -> bool:
 
 # ── shape 1: stats.nba.com "resultSets" tables ──────────────────────────────
 
+
 def _headers(headers: list) -> list[str]:
     if headers and isinstance(headers[0], str):
         return headers
@@ -84,11 +86,12 @@ def result_set_tables(resp: dict) -> dict[str, list[dict]]:
     out: dict[str, list[dict]] = {}
     for rs in sets or []:
         cols = [snake(c) for c in _headers(rs["headers"])]
-        out[snake(rs.get("name") or "result")] = [dict(zip(cols, row)) for row in rs["rowSet"]]
+        out[snake(rs.get("name") or "result")] = [dict(zip(cols, row, strict=True)) for row in rs["rowSet"]]
     return out
 
 
 # ── shape 2: nested JSON (V3 box scores, play-by-play, everything on cdn) ───
+
 
 def _flatten_into(row: dict, prefix: str, obj: dict) -> None:
     for k, v in obj.items():
@@ -98,7 +101,7 @@ def _flatten_into(row: dict, prefix: str, obj: dict) -> None:
 
 def walk(node: dict, path: list[str], ctx: dict, out: dict[str, list[dict]]) -> None:
     row: dict[str, Any] = {}
-    children: list[tuple[str, Any, dict]] = []
+    children: list[tuple[str, Any]] = []
     for k, v in node.items():
         if not path and k in SKIP_KEYS:
             continue
@@ -110,7 +113,7 @@ def walk(node: dict, path: list[str], ctx: dict, out: dict[str, list[dict]]) -> 
             if v:
                 row[k] = json.dumps(v)
         else:
-            children.append((k, v, {}))
+            children.append((k, v))
 
     if row:
         merged = dict(row)
@@ -123,8 +126,8 @@ def walk(node: dict, path: list[str], ctx: dict, out: dict[str, list[dict]]) -> 
         if _is_scalar(v) and _carries(k):
             child_ctx[k if k not in ctx else f"{(path or ['game'])[-1]}_{k}"] = v
 
-    for k, v, _ in children:
-        seg, extra = (("team", {"side": SIDE_KEYS[k]}) if k in SIDE_KEYS else (k, {}))
+    for k, v in children:
+        seg, extra = ("team", {"side": SIDE_KEYS[k]}) if k in SIDE_KEYS else (k, {})
         items = v if isinstance(v, list) else [v]
         for item in items:
             if isinstance(item, dict):
@@ -149,6 +152,7 @@ def tables_from(resp: dict) -> dict[str, list[dict]]:
 
 # ── writing to DuckDB ───────────────────────────────────────────────────────
 
+
 def ensure_meta(con: duckdb.DuckDBPyConnection) -> None:
     con.execute("""CREATE TABLE IF NOT EXISTS raw__files (
         file VARCHAR PRIMARY KEY, endpoint VARCHAR, mtime DOUBLE, tables VARCHAR,
@@ -159,8 +163,8 @@ def ensure_meta(con: duckdb.DuckDBPyConnection) -> None:
 
 def existing_columns(con, table: str) -> list[str] | None:
     rows = con.execute(
-        "SELECT column_name FROM information_schema.columns WHERE table_name = ? ORDER BY ordinal_position",
-        [table]).fetchall()
+        "SELECT column_name FROM information_schema.columns WHERE table_name = ? ORDER BY ordinal_position", [table]
+    ).fetchall()
     return [r[0] for r in rows] or None
 
 
@@ -172,7 +176,7 @@ def write_rows(con, table: str, rows: list[dict]) -> None:
             if c not in seen:
                 seen.add(c)
                 cols.append(c)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     have = existing_columns(con, table)
     if have is None:
         con.execute(f'CREATE TABLE "{table}" ({", ".join(f"""\"{c}\" VARCHAR""" for c in cols)})')
@@ -207,8 +211,9 @@ def load(rebuild: bool = False, only: set[str] | None = None) -> None:
     _, eps = load_registry()
     con = duckdb.connect(str(DB_PATH))
     if rebuild:
-        for (t,) in con.execute("SELECT table_name FROM information_schema.tables "
-                                "WHERE table_name LIKE 'raw\\_%' ESCAPE '\\'").fetchall():
+        for (t,) in con.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'raw\\_%' ESCAPE '\\'"
+        ).fetchall():
             con.execute(f'DROP TABLE "{t}"')
     ensure_meta(con)
     loaded = {f: (m, t) for f, m, t in con.execute("SELECT file, mtime, tables FROM raw__files").fetchall()}
@@ -230,36 +235,47 @@ def load(rebuild: bool = False, only: set[str] | None = None) -> None:
 
         ep_rows = 0
         for start in range(0, len(todo), BATCH_FILES):
-            chunk = todo[start:start + BATCH_FILES]
+            chunk = todo[start : start + BATCH_FILES]
             buffers: dict[str, list[dict]] = defaultdict(list)
             file_records = []
             con.execute("BEGIN")
-            for f, rel, prev in chunk:
-                if prev is not None:  # re-pulled: drop its old rows first
-                    for t in filter(None, (prev[1] or "").split(",")):
-                        con.execute(f'DELETE FROM "{t}" WHERE _file = ?', [rel])
-                doc = read(f)
-                meta = file_meta(f, doc)
-                n = 0
-                names = []
-                for tname, rows in tables_from(doc["response"]).items():
-                    table = f"raw_{ep.name}__{tname}"
-                    names.append(table)
-                    buffers[table] += [{**r, **meta} for r in rows]
-                    n += len(rows)
-                file_records.append((rel, ep.name, f.stat().st_mtime, ",".join(names), n))
-                ep_rows += n
-            for table, rows in buffers.items():
-                if rows:
-                    write_rows(con, table, rows)
-            con.executemany("INSERT OR REPLACE INTO raw__files VALUES (?, ?, ?, ?, ?, now())", file_records)
-            con.execute("COMMIT")
+            try:
+                ep_rows += _load_chunk(con, ep.name, chunk, buffers, file_records)
+                for table, rows in buffers.items():
+                    if rows:
+                        write_rows(con, table, rows)
+                con.executemany("INSERT OR REPLACE INTO raw__files VALUES (?, ?, ?, ?, ?, now())", file_records)
+                con.execute("COMMIT")
+            except Exception:
+                con.execute("ROLLBACK")  # the chunk loads again next run
+                raise
         total_files += len(todo)
         total_rows += ep_rows
         print(f"  {ep.name:<28} {len(todo):>6} files  {ep_rows:>10,} rows", flush=True)
 
     print(f"loaded {total_files:,} files, {total_rows:,} rows in {time.monotonic() - t0:.0f}s")
     con.close()
+
+
+def _load_chunk(con, ep_name: str, chunk: list, buffers: dict[str, list[dict]], file_records: list) -> int:
+    """Parse a batch of files into per-table row buffers; returns the row count."""
+    total = 0
+    for f, rel, prev in chunk:
+        if prev is not None:  # re-pulled: drop its old rows first
+            for t in filter(None, (prev[1] or "").split(",")):
+                con.execute(f'DELETE FROM "{t}" WHERE _file = ?', [rel])
+        doc = read(f)
+        meta = file_meta(f, doc)
+        n = 0
+        names = []
+        for tname, rows in tables_from(doc["response"]).items():
+            table = f"raw_{ep_name}__{tname}"
+            names.append(table)
+            buffers[table] += [{**r, **meta} for r in rows]
+            n += len(rows)
+        file_records.append((rel, ep_name, f.stat().st_mtime, ",".join(names), n))
+        total += n
+    return total
 
 
 def main() -> None:

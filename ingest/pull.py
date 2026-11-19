@@ -12,23 +12,23 @@ Run the two sources in parallel; they're throttled separately.
 from __future__ import annotations
 
 import argparse
-import signal
 import json
+import signal
 import time
 from collections import Counter
-from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
+from datetime import UTC, date, datetime, timedelta
 
 from nba_api.stats.static import teams as static_teams
 
-from ingest.client import LOG_DIR, RAW_DIR, PullError, call, read, save
+from ingest.client import PullError, call, read, save
+from ingest.paths import LOG_DIR, RAW_DIR
 from ingest.registry import PER_ORDER, Endpoint, Task, load_registry, once_tasks, season_tasks
 
 CURRENT_SEASON_MAX_AGE = timedelta(hours=12)  # season-level files for the live season go stale
-MAX_CONSECUTIVE_FAILS = 5    # in a row across all calls: probably throttled, so cool off
+MAX_CONSECUTIVE_FAILS = 5  # in a row across all calls: probably throttled, so cool off
 COOLOFF_S = 120
-MAX_COOLOFFS = 3             # cool-offs with no success in between: stop the run
-BROKEN_ENDPOINT_FAILS = 10   # one endpoint failing while others work: skip it this run
+MAX_COOLOFFS = 3  # cool-offs with no success in between: stop the run
+BROKEN_ENDPOINT_FAILS = 10  # one endpoint failing while others work: skip it this run
 
 # Clean stop: create this file (make stop-pull), or send Ctrl-C / SIGTERM.
 # The puller finishes the call it's on, saves it, and exits. Re-running resumes.
@@ -44,9 +44,10 @@ def _request_stop(signum, frame) -> None:
 
 # ── where the game and player lists come from ───────────────────────────────
 
+
 def _result_rows(doc: dict) -> list[dict]:
     rs = doc["response"]["resultSets"][0]
-    return [dict(zip(rs["headers"], row)) for row in rs["rowSet"]]
+    return [dict(zip(rs["headers"], row, strict=True)) for row in rs["rowSet"]]
 
 
 def games(seasons: list[str]) -> list[dict]:
@@ -57,8 +58,12 @@ def games(seasons: list[str]) -> list[dict]:
             doc = read(f)
             st = doc["request"]["params"].get("season_type_all_star")
             for r in _result_rows(doc):
-                out[r["GAME_ID"]] = {"game_id": r["GAME_ID"], "game_date": r["GAME_DATE"],
-                                     "season": season, "season_type": st}
+                out[r["GAME_ID"]] = {
+                    "game_id": r["GAME_ID"],
+                    "game_date": r["GAME_DATE"],
+                    "season": season,
+                    "season_type": st,
+                }
     return sorted(out.values(), key=lambda g: (g["game_date"], g["game_id"]), reverse=True)
 
 
@@ -71,6 +76,7 @@ def players(seasons: list[str]) -> list[int]:
 
 
 # ── building the task list ──────────────────────────────────────────────────
+
 
 def build_tasks(eps: list[Endpoint], cfg: dict, args) -> list[Task]:
     seasons = args.seasons or cfg["seasons"]
@@ -85,8 +91,11 @@ def build_tasks(eps: list[Endpoint], cfg: dict, args) -> list[Task]:
     for ep in by_per["team"]:
         tasks += [Task(ep, {**ep.params, "team_id": t}, "_", f"team_id={t}") for t in team_ids]
     for ep in by_per["team_season"]:
-        tasks += [Task(ep, {**ep.params, "team_id": t, ep.season_param: s}, s, f"team_id={t}")
-                  for s in seasons for t in team_ids]
+        tasks += [
+            Task(ep, {**ep.params, "team_id": t, ep.season_param: s}, s, f"team_id={t}")
+            for s in seasons
+            for t in team_ids
+        ]
     if by_per["player"]:
         pids = players(seasons)
         for ep in by_per["player"]:
@@ -98,15 +107,16 @@ def build_tasks(eps: list[Endpoint], cfg: dict, args) -> list[Task]:
             game_list = game_list[: args.limit_games]
         for g in game_list:  # game-major, so a stopped run leaves whole games
             for ep in by_per["game"]:
-                tasks.append(Task(ep, {**ep.params, "game_id": g["game_id"]}, g["season"],
-                                  f"game_id={g['game_id']}", meta=g))
+                tasks.append(
+                    Task(ep, {**ep.params, "game_id": g["game_id"]}, g["season"], f"game_id={g['game_id']}", meta=g)
+                )
     return tasks
 
 
 def needs_pull(task: Task, current_season: str, refresh_days: int) -> bool:
     if not task.path.exists():
         return True
-    age = datetime.now(timezone.utc) - datetime.fromtimestamp(task.path.stat().st_mtime, timezone.utc)
+    age = datetime.now(UTC) - datetime.fromtimestamp(task.path.stat().st_mtime, UTC)
     if task.ep.per in ("season", "team_season") and task.season == current_season:
         return age > CURRENT_SEASON_MAX_AGE
     if task.ep.per == "game" and refresh_days:
@@ -116,6 +126,7 @@ def needs_pull(task: Task, current_season: str, refresh_days: int) -> bool:
 
 
 # ── main loop ───────────────────────────────────────────────────────────────
+
 
 def main() -> None:
     ap = argparse.ArgumentParser()
@@ -147,7 +158,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _request_stop)
     fail_log = LOG_DIR / f"pull_failures_{args.source}.jsonl"
     ep_fails: Counter = Counter()  # failures in a row per endpoint (a broken endpoint)
-    streak = 0                     # failures in a row across all calls (throttled / blocked)
+    streak = 0  # failures in a row across all calls (throttled / blocked)
     cooloffs = 0
     skipped: set[str] = set()
     done = failed = 0
@@ -158,8 +169,11 @@ def main() -> None:
 
     for i, task in enumerate(todo, 1):
         if stopping():
-            print(f"[{datetime.now():%H:%M}] stopped cleanly after {done:,} saved; "
-                  f"{len(todo) - i + 1:,} calls left for next time", flush=True)
+            print(
+                f"[{datetime.now():%H:%M}] stopped cleanly after {done:,} saved; "
+                f"{len(todo) - i + 1:,} calls left for next time",
+                flush=True,
+            )
             break
         if task.ep.name in skipped:
             continue
@@ -173,30 +187,48 @@ def main() -> None:
             ep_fails[task.ep.name] += 1
             streak += 1
             with fail_log.open("a") as f:
-                f.write(json.dumps({"at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                                    "endpoint": task.ep.name, "params": task.params,
-                                    "error": str(err)[:500]}) + "\n")
+                f.write(
+                    json.dumps(
+                        {
+                            "at": datetime.now(UTC).isoformat(timespec="seconds"),
+                            "endpoint": task.ep.name,
+                            "params": task.params,
+                            "error": str(err)[:500],
+                        }
+                    )
+                    + "\n"
+                )
             if streak >= MAX_CONSECUTIVE_FAILS:
                 cooloffs += 1
                 if cooloffs > MAX_COOLOFFS:
-                    print(f"  !! still failing after {MAX_COOLOFFS} cool-offs; NBA.com may be blocking us. "
-                          f"Stopping; re-run later to resume.", flush=True)
+                    print(
+                        f"  !! still failing after {MAX_COOLOFFS} cool-offs; NBA.com may be blocking us. "
+                        f"Stopping; re-run later to resume.",
+                        flush=True,
+                    )
                     break
-                print(f"  .. {streak} failures in a row, cooling off {COOLOFF_S}s "
-                      f"({cooloffs}/{MAX_COOLOFFS})", flush=True)
+                print(
+                    f"  .. {streak} failures in a row, cooling off {COOLOFF_S}s ({cooloffs}/{MAX_COOLOFFS})", flush=True
+                )
                 end = time.monotonic() + COOLOFF_S
                 while time.monotonic() < end and not stopping():
                     time.sleep(2)
                 streak = 0
             elif ep_fails[task.ep.name] >= BROKEN_ENDPOINT_FAILS:
                 skipped.add(task.ep.name)
-                print(f"  !! {task.ep.name}: {BROKEN_ENDPOINT_FAILS} failures in a row while others work; "
-                      f"skipping it this run", flush=True)
+                print(
+                    f"  !! {task.ep.name}: {BROKEN_ENDPOINT_FAILS} failures in a row while others work; "
+                    f"skipping it this run",
+                    flush=True,
+                )
         if i % 100 == 0 or i == len(todo):
             rate = (time.monotonic() - t0) / i
             eta_h = rate * (len(todo) - i) / 3600
-            print(f"[{datetime.now():%H:%M}] {i:,}/{len(todo):,}  ok {done:,}  failed {failed:,}  "
-                  f"{rate:.2f}s/call  ~{eta_h:.1f}h left", flush=True)
+            print(
+                f"[{datetime.now():%H:%M}] {i:,}/{len(todo):,}  ok {done:,}  failed {failed:,}  "
+                f"{rate:.2f}s/call  ~{eta_h:.1f}h left",
+                flush=True,
+            )
 
     print(f"finished: {done:,} saved, {failed:,} failed, skipped endpoints: {sorted(skipped) or 'none'}", flush=True)
 

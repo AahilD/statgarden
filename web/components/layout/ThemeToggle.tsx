@@ -18,7 +18,7 @@ export function ThemeToggle() {
       onClick={flip}
       aria-label="Switch between light and dark"
       title="Switch between light and dark"
-      className="grid h-8 w-8 place-items-center rounded-[8px] text-ink-2 hover:bg-surface hover:text-ink"
+      className="grid h-8 w-8 place-items-center rounded-btn text-ink-2 hover:bg-surface hover:text-ink"
     >
       <svg className="only-light" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />

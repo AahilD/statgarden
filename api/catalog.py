@@ -41,7 +41,7 @@ class FieldDef(BaseModel):
     available: bool = True  # set at startup
 
     @model_validator(mode="after")
-    def _check(self) -> "FieldDef":
+    def _check(self) -> FieldDef:
         if self.kind == "measure":
             if self.agg is None or self.format is None:
                 raise ValueError(f"{self.id}: measures need agg and format")
@@ -49,12 +49,19 @@ class FieldDef(BaseModel):
                 raise ValueError(f"{self.id}: ratio needs formula and requires")
             if self.agg != "ratio" and not self.expr:
                 raise ValueError(f"{self.id}: needs expr")
+            if self.agg == "weighted_avg" and not self.weight:
+                raise ValueError(f"{self.id}: weighted_avg needs weight")
             if self.agg in ("ratio", "count"):
-                self.modes = ["total"]
+                self.modes = ["total"]  # per game / per 36 of a percentage or a count makes no sense
             if self.default_mode is None:
                 self.default_mode = self.modes[0]
-        elif not self.expr:
-            raise ValueError(f"{self.id}: dimensions need expr")
+            if self.default_mode not in self.modes:
+                raise ValueError(f"{self.id}: default_mode isn't one of its modes")
+        else:
+            if not self.expr or self.type is None:
+                raise ValueError(f"{self.id}: dimensions need expr and type")
+            if self.type == "bucket" and not self.bins:
+                raise ValueError(f"{self.id}: bucket needs bins")
         return self
 
 
@@ -79,7 +86,12 @@ class Catalog(BaseModel):
 
     def model_post_init(self, __context) -> None:
         self._by_id = {f.id: f for f in self.fields}
+        if len(self._by_id) != len(self.fields):
+            dupes = sorted({f.id for f in self.fields if sum(g.id == f.id for g in self.fields) > 1})
+            raise ValueError(f"duplicate field ids: {dupes}")
         for f in self.fields:
+            if f.group not in self.groups:
+                raise ValueError(f"{f.id}: unknown group {f.group!r}")
             for r in f.requires:
                 base = self._by_id.get(r)
                 if base is None or base.agg != "sum":

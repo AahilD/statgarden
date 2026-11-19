@@ -23,7 +23,7 @@ const TYPES: { id: ChartSpec["type"]; label: string }[] = [
 export function ViewSwitch(p: { view: ChartView; setSpec: SetSpec; status: string }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div role="radiogroup" aria-label="Show" className="inline-flex rounded-[8px] border border-line bg-surface p-1">
+      <div role="radiogroup" aria-label="Show" className="inline-flex rounded-btn border border-line bg-surface p-1">
         {VIEWS.map((v) => {
           const on = p.view === v.id;
           return (
@@ -33,7 +33,7 @@ export function ViewSwitch(p: { view: ChartView; setSpec: SetSpec; status: strin
               role="radio"
               aria-checked={on}
               onClick={() => p.setSpec((s) => setView(s, v.id))}
-              className={`rounded-[6px] px-3.5 py-1 text-sm font-medium transition-colors ${
+              className={`rounded-chip px-3.5 py-1 text-sm font-medium transition-colors ${
                 on ? "bg-ink text-bg" : "text-ink-2 hover:text-ink"
               }`}
             >
@@ -53,7 +53,7 @@ export function ViewSwitch(p: { view: ChartView; setSpec: SetSpec; status: strin
 export function ChartPanel(p: { spec: PivotSpec; setSpec: SetSpec; children: React.ReactNode }) {
   const c = p.spec.chart;
   return (
-    <div className="overflow-hidden rounded-[12px] border border-line bg-surface">
+    <div className="overflow-hidden rounded-card border border-line bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2.5">
         <span className="title-caps text-[13px]">Chart</span>
         <div className="flex flex-wrap gap-1.5">
@@ -86,7 +86,7 @@ export function ChartPanel(p: { spec: PivotSpec; setSpec: SetSpec; children: Rea
 function ComingSoon({ type }: { type: ChartSpec["type"] }) {
   const bars = [62, 88, 45, 74, 96, 58, 80, 38];
   return (
-    <div className="relative flex min-h-48 flex-col justify-end overflow-hidden rounded-[8px] border-2 border-dashed border-line-strong p-4">
+    <div className="relative flex min-h-48 flex-col justify-end overflow-hidden rounded-btn border-2 border-dashed border-line-strong p-4">
       <div aria-hidden className="flex h-28 items-end gap-2 opacity-90">
         {bars.map((h, i) => (
           <i

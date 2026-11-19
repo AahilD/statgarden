@@ -1,5 +1,6 @@
 // Typed calls to the FastAPI service (proxied at /api by next.config.ts).
-import type { Mode, PivotSpec } from "./spec";
+import type { Mode } from "./spec";
+import type { QuerySpec } from "./specOps";
 
 export type FieldMeta = {
   id: string;
@@ -38,8 +39,6 @@ export type QueryResult = {
   row_fields: ResultField[];
   column_fields: ResultField[];
   values: ResultValue[];
-  sql: string;
-  params: unknown[];
   elapsed_ms: number;
   row_count: number;
   cached: boolean;
@@ -47,11 +46,13 @@ export type QueryResult = {
 
 export class ApiError extends Error {}
 
-async function get<T>(path: string): Promise<T> {
-  const r = await fetch(`/api${path}`);
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(`/api${path}`, init);
   if (!r.ok) throw new ApiError(await errorText(r));
   return r.json();
 }
+
+const get = <T>(path: string) => request<T>(path);
 
 async function errorText(r: Response) {
   try {
@@ -70,13 +71,10 @@ export const api = {
     get<{ field: string; values: (string | number)[] }>(
       `/meta/values?field=${encodeURIComponent(field)}&q=${encodeURIComponent(q)}&limit=300`,
     ),
-  query: async (spec: PivotSpec): Promise<QueryResult> => {
-    const r = await fetch("/api/query", {
+  query: (spec: QuerySpec) =>
+    request<QueryResult>("/query", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(spec),
-    });
-    if (!r.ok) throw new ApiError(await errorText(r));
-    return r.json();
-  },
+    }),
 };

@@ -70,6 +70,10 @@ sources:
     description: 'stats BoxScoreSummaryV3: officials, inactive players, line score, arena'
   - name: raw_box_summary__broadcasters_international_ott_broadcasters
     description: 'stats BoxScoreSummaryV3: officials, inactive players, line score, arena'
+  - name: raw_box_summary__broadcasters_international_radio_broadcasters
+    description: 'stats BoxScoreSummaryV3: officials, inactive players, line score, arena'
+  - name: raw_box_summary__broadcasters_national_broadcasters
+    description: 'stats BoxScoreSummaryV3: officials, inactive players, line score, arena'
   - name: raw_box_summary__broadcasters_national_radio_broadcasters
     description: 'stats BoxScoreSummaryV3: officials, inactive players, line score, arena'
   - name: raw_box_summary__game
@@ -136,22 +140,42 @@ sources:
     description: stats LeagueDashTeamClutch
   - name: raw_dash_team_shot_locations__shot_locations
     description: stats LeagueDashTeamShotLocations
+  - name: raw_defend_player__league_dash_ptdefend
+    description: stats LeagueDashPtDefend
+  - name: raw_defend_team__league_dash_pt_team_defend
+    description: stats LeagueDashPtTeamDefend
   - name: raw_draft_combine__draft_combine_stats
     description: stats DraftCombineStats
   - name: raw_draft_history__draft_history
     description: stats DraftHistory
   - name: raw_estimated_metrics_player__player_estimated_metrics
     description: stats PlayerEstimatedMetrics
+  - name: raw_estimated_metrics_team__team_estimated_metrics
+    description: stats TeamEstimatedMetrics
   - name: raw_game_log_player__league_game_log
     description: stats LeagueGameLog
   - name: raw_game_log_team__league_game_log
     description: 'stats LeagueGameLog: also the list of games the per-game endpoints use'
+  - name: raw_hustle_player__hustle_stats_player
+    description: stats LeagueHustleStatsPlayer
+  - name: raw_hustle_team__hustle_stats_team
+    description: stats LeagueHustleStatsTeam
+  - name: raw_lineups__lineups
+    description: stats LeagueDashLineups
   - name: raw_pbp__actions
     description: stats PlayByPlayV3
   - name: raw_pbp__game
     description: stats PlayByPlayV3
+  - name: raw_play_types__synergy_play_type
+    description: stats SynergyPlayTypes
   - name: raw_player_index__player_index
     description: stats PlayerIndex
+  - name: raw_player_info__available_seasons
+    description: 'stats CommonPlayerInfo: one call per player who appears in the game logs'
+  - name: raw_player_info__common_player_info
+    description: 'stats CommonPlayerInfo: one call per player who appears in the game logs'
+  - name: raw_player_info__player_headline_stats
+    description: 'stats CommonPlayerInfo: one call per player who appears in the game logs'
   - name: raw_rotation__away_team
     description: 'stats GameRotation: every stint on and off the floor'
   - name: raw_rotation__home_team
@@ -182,5 +206,45 @@ sources:
     description: stats ScheduleLeagueV2
   - name: raw_schedule__weeks
     description: stats ScheduleLeagueV2
+  - name: raw_season_matchups__season_matchups
+    description: stats LeagueSeasonMatchups
+  - name: raw_shots__league_averages
+    description: stats ShotChartDetail
+  - name: raw_shots__shot_chart_detail
+    description: stats ShotChartDetail
   - name: raw_standings__standings
     description: stats LeagueStandingsV3
+  - name: raw_team_details__team_awards_championships
+    description: stats TeamDetails
+  - name: raw_team_details__team_awards_conf
+    description: stats TeamDetails
+  - name: raw_team_details__team_awards_div
+    description: stats TeamDetails
+  - name: raw_team_details__team_background
+    description: stats TeamDetails
+  - name: raw_team_details__team_history
+    description: stats TeamDetails
+  - name: raw_team_details__team_hof
+    description: stats TeamDetails
+  - name: raw_team_details__team_retired
+    description: stats TeamDetails
+  - name: raw_team_details__team_social_sites
+    description: stats TeamDetails
+  - name: raw_team_info__available_seasons
+    description: stats TeamInfoCommon
+  - name: raw_team_info__team_info_common
+    description: stats TeamInfoCommon
+  - name: raw_team_info__team_season_ranks
+    description: stats TeamInfoCommon
+  - name: raw_team_roster__coaches
+    description: stats CommonTeamRoster
+  - name: raw_team_roster__common_team_roster
+    description: stats CommonTeamRoster
+  - name: raw_tracking__league_dash_pt_stats
+    description: stats LeagueDashPtStats
+  - name: raw_tracking_shots_opponent__league_dash_ptshots
+    description: stats LeagueDashOppPtShot
+  - name: raw_tracking_shots_player__league_dash_ptshots
+    description: stats LeagueDashPlayerPtShot
+  - name: raw_tracking_shots_team__league_dash_ptshots
+    description: stats LeagueDashTeamPtShot

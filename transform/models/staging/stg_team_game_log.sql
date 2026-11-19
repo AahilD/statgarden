@@ -9,20 +9,5 @@ select
     matchup like '%vs.%'                as is_home,
     wl = 'W'                            as is_win,
     cast(plus_minus as integer)         as margin,
-    cast(min as integer)                as min,
-    cast(fgm as integer)                as fgm,
-    cast(fga as integer)                as fga,
-    cast(fg3m as integer)               as fg3m,
-    cast(fg3a as integer)               as fg3a,
-    cast(ftm as integer)                as ftm,
-    cast(fta as integer)                as fta,
-    cast(oreb as integer)               as oreb,
-    cast(dreb as integer)               as dreb,
-    cast(reb as integer)                as reb,
-    cast(ast as integer)                as ast,
-    cast(stl as integer)                as stl,
-    cast(blk as integer)                as blk,
-    cast(tov as integer)                as tov,
-    cast(pf as integer)                 as pf,
-    cast(pts as integer)                as pts
+    {{ box_score_columns() }}
 from {{ source('raw', 'raw_game_log_team__league_game_log') }}

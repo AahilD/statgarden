@@ -11,8 +11,7 @@ from __future__ import annotations
 import duckdb
 import yaml
 
-from ingest.client import ROOT
-from ingest.load import DB_PATH
+from ingest.paths import DB_PATH, ROOT
 from ingest.registry import load_registry
 
 OUT = ROOT / "transform" / "models" / "staging" / "_sources.yml"
@@ -22,18 +21,23 @@ def main() -> None:
     _, eps = load_registry()
     by_name = {e.name: e for e in eps}
     con = duckdb.connect(str(DB_PATH), read_only=True)
-    tables = [t for (t,) in con.execute(
-        "SELECT table_name FROM information_schema.tables "
-        "WHERE table_name LIKE 'raw\\_%' ESCAPE '\\' ORDER BY 1").fetchall()]
+    tables = [
+        t
+        for (t,) in con.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'raw\\_%' ESCAPE '\\' ORDER BY 1"
+        ).fetchall()
+    ]
     con.close()
 
     entries = []
     for t in tables:
+        ep = None if t.startswith("raw__") else by_name.get(t[len("raw_") :].split("__")[0])
         if t.startswith("raw__"):
             desc = "Loader bookkeeping."
+        elif ep is None:
+            desc = "Unknown endpoint."
         else:
-            ep = by_name.get(t[len("raw_"):].split("__")[0])
-            desc = f"{ep.source} {ep.endpoint}" + (f": {ep.note}" if ep and ep.note else "") if ep else "Unknown endpoint."
+            desc = f"{ep.source} {ep.endpoint}" + (f": {ep.note}" if ep.note else "")
         entries.append({"name": t, "description": desc})
 
     doc = {"version": 2, "sources": [{"name": "raw", "schema": "main", "tables": entries}]}

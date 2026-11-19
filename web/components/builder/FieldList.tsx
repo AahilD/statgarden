@@ -14,7 +14,6 @@ export function FieldList(p: {
   const [q, setQ] = useState("");
   // groups start closed, except the two most used
   const [open, setOpen] = useState<Set<string>>(new Set(["Player", "Box score"]));
-  const closed = { has: (g: string) => !open.has(g) };
 
   const byGroup = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -24,29 +23,28 @@ export function FieldList(p: {
   }, [p.groups, p.fields, q]);
 
   return (
-    <div className="rounded-[12px] border border-line bg-surface p-3">
-      <div className="flex items-baseline justify-between">
-        <h2 className="title-caps text-[13px]">Fields</h2>
-        <span className="label-mono hidden md:inline">drag or click</span>
-      </div>
+    <div className="rounded-card border border-line bg-surface p-3">
+      <h2 className="title-caps text-[13px]">Fields</h2>
       <input
         type="search"
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search fields"
         aria-label="Search fields"
-        className="mt-3 w-full rounded-[8px] border border-line bg-bg px-3 py-2 text-sm placeholder:text-ink-2 focus:border-accent focus:outline-none"
+        className="mt-3 w-full rounded-btn border border-line bg-bg px-3 py-2 text-sm placeholder:text-ink-2 focus:border-accent focus:outline-none"
       />
       {p.loading && <p className="mt-4 text-sm text-ink-2">Loading fields…</p>}
       {p.error && <p className="mt-4 text-sm text-red">{p.error}</p>}
       <div className="mt-2 max-h-[calc(100vh-200px)] overflow-y-auto pr-1">
-        {byGroup.map(({ group, fields }) =>
-          fields.length === 0 ? null : (
+        {byGroup.map(({ group, fields }) => {
+          if (fields.length === 0) return null;
+          const shown = open.has(group) || !!q; // searching opens every group
+          return (
             <div key={group} className="mt-2">
               <button
                 type="button"
                 className="flex w-full items-center justify-between py-1.5"
-                aria-expanded={!closed.has(group) || !!q}
+                aria-expanded={shown}
                 onClick={() =>
                   setOpen((s) => {
                     const n = new Set(s);
@@ -56,14 +54,10 @@ export function FieldList(p: {
                   })
                 }
               >
-                <span className="flex items-center gap-2">
-                  <i aria-hidden className={`h-2.5 w-2.5 rounded-[2px] ${fields[0]?.kind === "measure" ? "bg-orange" : "bg-blue"}`} />
-                  <span className="label-mono text-ink">{group}</span>
-                  <span className="font-mono text-[10px] text-ink-2">{fields.filter((f) => f.available).length}</span>
-                </span>
-                <span className="label-mono">{closed.has(group) && !q ? "+" : "−"}</span>
+                <span className="label-mono text-ink">{group}</span>
+                <span className="label-mono">{shown ? "−" : "+"}</span>
               </button>
-              {(!closed.has(group) || q) && (
+              {shown && (
                 <ul className="space-y-1">
                   {fields.map((f) => (
                     <li key={f.id}>
@@ -73,8 +67,8 @@ export function FieldList(p: {
                 </ul>
               )}
             </div>
-          ),
-        )}
+          );
+        })}
       </div>
     </div>
   );
@@ -106,19 +100,14 @@ function DraggableField({ field, onAdd }: { field: FieldMeta; onAdd: (f: FieldMe
 }
 
 export function FieldPill({ field, floating }: { field: FieldMeta; floating?: boolean }) {
-  const dim = field.kind === "dimension";
   return (
     <div
-      className={`lift flex items-center gap-2 rounded-[6px] border px-2.5 py-1.5 text-sm ${
+      className={`lift flex items-center gap-2 rounded-chip border px-2.5 py-1.5 text-sm ${
         field.available
           ? "cursor-grab border-line bg-bg hover:border-line-strong"
           : "cursor-not-allowed border-dashed border-line text-ink-2 opacity-60"
-      } ${floating ? `cursor-grabbing shadow-xl ${dim ? "border-blue" : "border-orange"} border-2` : ""}`}
+      } ${floating ? "cursor-grabbing border-2 border-ink-2 shadow-xl" : ""}`}
     >
-      <span
-        aria-hidden
-        className={`h-2 w-2 shrink-0 ${dim ? "rounded-[2px] bg-blue" : "rounded-full bg-orange"}`}
-      />
       <span className="truncate">{field.label}</span>
       <span className="ml-auto font-mono text-[11px] text-ink-2">{field.available ? field.short : "soon"}</span>
     </div>

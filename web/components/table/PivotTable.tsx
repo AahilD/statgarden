@@ -4,7 +4,7 @@ import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-tab
 import { useMemo, useState } from "react";
 import type { QueryResult } from "@/lib/api";
 import { formatValue } from "@/lib/format";
-import { toWide, type WideRow } from "@/lib/pivot";
+import type { Wide, WideRow } from "@/lib/pivot";
 import type { PivotSpec } from "@/lib/spec";
 import { setSort } from "@/lib/specOps";
 import { SERIES, TONE } from "@/lib/tones";
@@ -14,10 +14,11 @@ const helper = createColumnHelper<typeof features, WideRow>();
 
 export function PivotTable(p: {
   result: QueryResult;
+  wide: Wide;
   spec: PivotSpec;
   setSpec: (fn: (s: PivotSpec) => PivotSpec) => void;
 }) {
-  const wide = useMemo(() => toWide(p.result), [p.result]);
+  const { wide } = p;
   const [shadeOn, setShadeOn] = useState(true);
 
   // Green for better than the rest of the table, red for worse (by rank within the column).
@@ -98,7 +99,7 @@ export function PivotTable(p: {
         helper.group({
           id: `group:${g.id}`,
           header: () => (
-            <span className={`block rounded-[6px] px-2 py-1 ${TONE[SERIES[i % SERIES.length]].block}`}>{g.labels.join(" · ")}</span>
+            <span className={`block rounded-chip px-2 py-1 ${TONE[SERIES[i % SERIES.length]].block}`}>{g.labels.join(" · ")}</span>
           ),
           columns: valueCols(g.id),
         }),

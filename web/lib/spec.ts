@@ -2,16 +2,16 @@
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
 import { z } from "zod";
 
-export const OPS = ["=", "!=", ">", ">=", "<", "<=", "in", "not_in", "between", "contains"] as const;
-export const MODES = ["total", "per_game", "per_36"] as const;
+const OPS = ["=", "!=", ">", ">=", "<", "<=", "in", "not_in", "between", "contains"] as const;
+const MODES = ["total", "per_game", "per_36"] as const;
 
-export const FilterSchema = z.object({
+const FilterSchema = z.object({
   field: z.string(),
   op: z.enum(OPS),
   value: z.unknown(),
 });
 
-export const ValueSchema = z.object({
+const ValueSchema = z.object({
   field: z.string(),
   mode: z.enum(MODES).optional(),
 });
@@ -39,7 +39,6 @@ export const SpecSchema = z.object({
 
 export type PivotSpec = z.infer<typeof SpecSchema>;
 export type Filter = z.infer<typeof FilterSchema>;
-export type ValueRef = z.infer<typeof ValueSchema>;
 export type Mode = (typeof MODES)[number];
 
 export const LIMITS = { rows: 3, columns: 2, values: 6 } as const;
@@ -70,10 +69,6 @@ export function decodeSpec(v: string | null | undefined): PivotSpec | null {
   } catch {
     return null;
   }
-}
-
-export function valueKey(field: string, mode: string) {
-  return `${field}:${mode}`;
 }
 
 export type ChartSpec = PivotSpec["chart"];

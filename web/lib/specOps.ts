@@ -104,9 +104,12 @@ export function isComplete(f: Filter): boolean {
   return f.value !== null && f.value !== undefined && f.value !== "";
 }
 
-/** The spec sent to the API: half-made filters are left out. */
-export function forQuery(spec: PivotSpec): PivotSpec {
-  return { ...spec, filters: spec.filters.filter(isComplete) };
+/** What the API needs: no chart settings (they don't change the numbers) and no half-made filters. */
+export type QuerySpec = Omit<PivotSpec, "chart">;
+
+export function forQuery(spec: PivotSpec): QuerySpec {
+  const { v, dataset, rows, columns, values, sort, limit } = spec;
+  return { v, dataset, filters: spec.filters.filter(isComplete), rows, columns, values, sort, limit };
 }
 
 export function clearChart(spec: PivotSpec, well: ChartWell): PivotSpec {

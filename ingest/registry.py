@@ -10,7 +10,7 @@ from typing import Any
 
 import yaml
 
-from ingest.client import RAW_DIR
+from ingest.paths import RAW_DIR
 
 REGISTRY = Path(__file__).resolve().parent / "endpoints.yaml"
 PER_ORDER = ["once", "season", "team", "team_season", "player", "game"]
@@ -45,18 +45,16 @@ class Task:
 
 def load_registry() -> tuple[dict[str, Any], list[Endpoint]]:
     doc = yaml.safe_load(REGISTRY.read_text())
-    eps = []
-    for e in doc["endpoints"]:
-        eps.append(Endpoint(**e))
-    return doc, eps
+    return doc, [Endpoint(**e) for e in doc["endpoints"]]
 
 
 def _slug(value: Any) -> str:
     return re.sub(r"[^A-Za-z0-9.-]+", "-", str(value)).strip("-")
 
 
-def _key(params: dict[str, Any], skip: set[str]) -> str:
-    parts = [f"{k}={_slug(v)}" for k, v in sorted(params.items()) if k not in skip]
+def _key(params: dict[str, Any]) -> str:
+    """File name for a call, from the params that vary between calls."""
+    parts = [f"{k}={_slug(v)}" for k, v in sorted(params.items())]
     return "__".join(parts) or "all"
 
 
@@ -64,7 +62,7 @@ def _sweeps(ep: Endpoint) -> list[dict[str, Any]]:
     if not ep.sweep:
         return [{}]
     keys = list(ep.sweep)
-    return [dict(zip(keys, combo)) for combo in itertools.product(*(ep.sweep[k] for k in keys))]
+    return [dict(zip(keys, combo, strict=True)) for combo in itertools.product(*(ep.sweep[k] for k in keys))]
 
 
 def season_tasks(ep: Endpoint, seasons: list[str], season_types: list[str]) -> list[Task]:
@@ -75,10 +73,10 @@ def season_tasks(ep: Endpoint, seasons: list[str], season_types: list[str]) -> l
                 params = {**ep.params, **sw, ep.season_param: season}
                 if st:
                     params[ep.season_type_param] = st
-                key = _key({**sw, **({"season_type": st} if st else {})}, skip=set())
+                key = _key({**sw, **({"season_type": st} if st else {})})
                 tasks.append(Task(ep, params, season, key))
     return tasks
 
 
 def once_tasks(ep: Endpoint) -> list[Task]:
-    return [Task(ep, {**ep.params, **sw}, "_", _key({**ep.params, **sw}, skip=set())) for sw in _sweeps(ep)]
+    return [Task(ep, {**ep.params, **sw}, "_", _key({**ep.params, **sw})) for sw in _sweeps(ep)]

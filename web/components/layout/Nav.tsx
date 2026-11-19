@@ -6,7 +6,7 @@ import { ThemeToggle } from "./ThemeToggle";
 
 const LINKS = [
   { href: "/", num: "01", label: "Home" },
-  { href: "/explore", num: "02", label: "Explore" },
+  { href: "/lab", num: "02", label: "Lab" },
 ];
 
 export function Nav() {
@@ -20,7 +20,7 @@ export function Nav() {
             key={l.href}
             href={l.href}
             aria-current={active ? "page" : undefined}
-            className={`group flex items-center gap-1.5 rounded-[8px] px-2 py-1.5 sm:px-2.5 ${
+            className={`group flex items-center gap-1.5 rounded-btn px-2 py-1.5 sm:px-2.5 ${
               active ? "text-ink" : "text-ink-2 hover:text-ink"
             }`}
           >
