@@ -49,10 +49,16 @@ class Sort(BaseModel):
 class Chart(BaseModel):
     # The API doesn't draw charts; it keeps these so a view round-trips intact.
     view: Literal["table", "chart", "both"] = "table"
-    type: Literal["table", "bar", "line", "scatter", "heatmap"] = "bar"
+    type: Literal["auto", "bar", "line", "scatter", "heatmap"] = "auto"
     x: str | None = None
     y: str | None = None
     color: str | None = None
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _old_types(cls, v: Any) -> Any:
+        # old links said "table"; anything unknown means "pick one for me"
+        return v if v in ("bar", "line", "scatter", "heatmap") else "auto"
 
 
 class PivotSpec(BaseModel):

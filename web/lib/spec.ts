@@ -29,12 +29,13 @@ export const SpecSchema = z.object({
     .object({
       // what's on screen: the table, the chart, or both
       view: z.enum(["table", "chart", "both"]).default("table"),
-      type: z.enum(["table", "bar", "line", "scatter", "heatmap"]).default("bar"),
+      // "auto" picks a type from the fields; anything unknown (old links said "table") falls back to it
+      type: z.enum(["auto", "bar", "line", "scatter", "heatmap"]).catch("auto"),
       x: z.string().nullish(),
       y: z.string().nullish(),
       color: z.string().nullish(),
     })
-    .default({ view: "table", type: "bar" }),
+    .default({ view: "table", type: "auto" }),
 });
 
 export type PivotSpec = z.infer<typeof SpecSchema>;

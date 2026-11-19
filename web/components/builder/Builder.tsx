@@ -19,7 +19,7 @@ import { addField, defaultWell, forQuery, type Well } from "@/lib/specOps";
 import { FieldList, FieldPill } from "./FieldList";
 import { Toolbar } from "./Toolbar";
 import { ChartWells, Wells } from "./Wells";
-import { ChartPanel, ViewSwitch } from "./ChartPanel";
+import { ChartPanel, ViewSwitch, csvAction } from "./ChartPanel";
 import { PivotTable } from "@/components/table/PivotTable";
 import { toWide } from "@/lib/pivot";
 
@@ -112,9 +112,16 @@ export function Builder() {
               view={spec.chart.view}
               setSpec={setSpec}
               status={resultStatus(resultQ.isFetching, wide?.rows.length, resultQ.data?.elapsed_ms, resultQ.data?.cached)}
+              onCsv={csvAction(resultQ.data, wide, spec)}
             />
             {spec.chart.view !== "table" && (
-              <ChartPanel spec={spec} setSpec={setSpec}>
+              <ChartPanel
+                spec={spec}
+                setSpec={setSpec}
+                result={resultQ.data}
+                fields={fields}
+                error={resultQ.error?.message}
+              >
                 <ChartWells spec={spec} setSpec={setSpec} fields={fields} dragging={dragging} />
               </ChartPanel>
             )}

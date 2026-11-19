@@ -75,20 +75,22 @@ export function ChartWells(p: { spec: PivotSpec; setSpec: SetSpec; fields: Map<s
   const slot = (well: ChartWell, title: string, hint: string) => {
     const id = p.spec.chart[well];
     return (
-      <WellRow id={well} title={title} hint={hint} dragging={p.dragging} full={false}>
-        {id ? (
-          <Chip tone={WELL_TONE[well]} onRemove={() => p.setSpec((s) => clearChart(s, well))}>
-            {label(id)}
-          </Chip>
-        ) : null}
-      </WellRow>
+      <div className="grid grid-cols-[84px_minmax(0,1fr)] gap-x-2 gap-y-1">
+        <WellRow id={well} title={title} hint={hint} dragging={p.dragging} full={false}>
+          {id ? (
+            <Chip tone={WELL_TONE[well]} onRemove={() => p.setSpec((s) => clearChart(s, well))}>
+              {label(id)}
+            </Chip>
+          ) : null}
+        </WellRow>
+      </div>
     );
   };
   return (
-    <div className="grid gap-2.5 sm:grid-cols-[96px_1fr] sm:gap-x-3">
-      {slot("x", "X axis", "Along the bottom, e.g. Month")}
-      {slot("y", "Y axis", "Up the side, e.g. Points")}
-      {slot("color", "Colour", "One colour each, e.g. Home / away")}
+    <div className="grid gap-2.5 lg:grid-cols-3 lg:gap-4">
+      {slot("x", "X axis", "e.g. Month")}
+      {slot("y", "Y axis", "e.g. Points")}
+      {slot("color", "Colour", "e.g. Home / away")}
     </div>
   );
 }

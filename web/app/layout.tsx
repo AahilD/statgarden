@@ -11,8 +11,12 @@ const roboto = Roboto({ variable: "--font-roboto", subsets: ["latin"], weight: [
 const jetbrains = JetBrains_Mono({ variable: "--font-jetbrains", subsets: ["latin"], weight: ["400", "500"] });
 
 export const metadata: Metadata = {
+  // previews need full URLs; set STATGARDEN_SITE_URL to the real address when deployed
+  metadataBase: new URL(process.env.STATGARDEN_SITE_URL ?? "http://localhost:3000"),
   title: { default: "StatGarden", template: "%s · StatGarden" },
   description: "NBA stats you can pivot, chart and share.",
+  openGraph: { siteName: "StatGarden", images: [{ url: "/og", width: 1200, height: 630 }] },
+  twitter: { card: "summary_large_image" },
 };
 
 // Sets the saved theme before first paint, so light-mode users don't see a dark flash.

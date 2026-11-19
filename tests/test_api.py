@@ -116,6 +116,12 @@ def test_chart_settings_dont_change_the_cache_key():
     assert second["cached"] is True and second["rows"] == first["rows"]
 
 
+@pytest.mark.parametrize(("sent", "kept"), [(None, "auto"), ("table", "auto"), ("nonsense", "auto"), ("line", "line")])
+def test_old_or_unknown_chart_types_fall_back_to_auto(sent, kept):
+    chart = {} if sent is None else {"type": sent}
+    assert PivotSpec(values=[{"field": "pts"}], chart=chart).chart.type == kept
+
+
 def test_values_endpoint_orders_bins():
     vals = client.get("/meta/values", params={"field": "rest_days"}).json()["values"]
     assert vals == ["0 (B2B)", "1", "2", "3+"]
