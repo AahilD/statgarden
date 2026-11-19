@@ -1,16 +1,30 @@
--- One row per player per game, types fixed, home/away and W/L parsed.
+-- One row per player per game from LeagueGameLog. Types set, home/away and W/L parsed.
 select
-    player_id,
+    cast(player_id as bigint)           as player_id,
     player_name,
-    team_id,
+    cast(team_id as bigint)             as team_id,
     team_abbreviation,
     game_id,
-    cast(game_date as date)         as game_date,
-    season,
-    season_type,
-    matchup like '%vs.%'            as is_home,
-    wl = 'W'                        as is_win,
-    min, fgm, fga, fg3m, fg3a, ftm, fta,
-    oreb, dreb, reb, ast, stl, blk, tov, pf, pts,
-    plus_minus
-from {{ source('raw', 'raw_player_game_log') }}
+    cast(game_date as date)             as game_date,
+    _season                             as season,
+    {{ season_type('_season_type') }}   as season_type,
+    matchup like '%vs.%'                as is_home,
+    wl = 'W'                            as is_win,
+    cast(min as integer)                as min,
+    cast(fgm as integer)                as fgm,
+    cast(fga as integer)                as fga,
+    cast(fg3m as integer)               as fg3m,
+    cast(fg3a as integer)               as fg3a,
+    cast(ftm as integer)                as ftm,
+    cast(fta as integer)                as fta,
+    cast(oreb as integer)               as oreb,
+    cast(dreb as integer)               as dreb,
+    cast(reb as integer)                as reb,
+    cast(ast as integer)                as ast,
+    cast(stl as integer)                as stl,
+    cast(blk as integer)                as blk,
+    cast(tov as integer)                as tov,
+    cast(pf as integer)                 as pf,
+    cast(pts as integer)                as pts,
+    cast(plus_minus as integer)         as plus_minus
+from {{ source('raw', 'raw_game_log_player__league_game_log') }}

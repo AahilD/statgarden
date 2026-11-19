@@ -14,5 +14,7 @@ models:
       +materialized: view
     intermediate:
       +materialized: view
+    recon:
+      +materialized: table
     marts:
       +materialized: table

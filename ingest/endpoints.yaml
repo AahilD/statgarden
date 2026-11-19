@@ -1,0 +1,238 @@
+# Everything StatGarden pulls, in one list. The puller and loader read this file;
+# adding data is adding an entry here (plus a dbt model if it needs cleaning).
+#
+# Entry keys
+#   name         our name; raw tables become raw_<name>__<table>
+#   source       stats (stats.nba.com) | cdn (cdn.nba.com)
+#   endpoint     nba_api class name (stats.endpoints or live.nba.endpoints)
+#   per          once | season | team | team_season | player | game
+#   params       fixed parameters
+#   sweep        parameter -> list of values; one call per combination
+#   season_types which season types to pull for per: season (default: all three)
+#   season_param / season_type_param   parameter names when they differ
+#   note         anything worth remembering
+
+seasons: ["2024-25", "2025-26", "2026-27"]
+season_types: ["Regular Season", "PlayIn", "Playoffs"]
+
+endpoints:
+  # ── Reference: players, teams, draft ─────────────────────────────────────
+  - name: all_players
+    source: stats
+    endpoint: CommonAllPlayers
+    per: once
+    params: { is_only_current_season: 0, season: "2026-27" }
+  - name: player_index
+    source: stats
+    endpoint: PlayerIndex
+    per: season
+    season_types: ["Regular Season"]
+    season_type_param: null
+    params: { historical_nullable: 1 }
+  - name: player_info
+    source: stats
+    endpoint: CommonPlayerInfo
+    per: player
+    note: one call per player who appears in the game logs
+  - name: team_details
+    source: stats
+    endpoint: TeamDetails
+    per: team
+  - name: team_info
+    source: stats
+    endpoint: TeamInfoCommon
+    per: team_season
+    season_param: season_nullable
+  - name: team_roster
+    source: stats
+    endpoint: CommonTeamRoster
+    per: team_season
+  - name: draft_history
+    source: stats
+    endpoint: DraftHistory
+    per: once
+  - name: draft_combine
+    source: stats
+    endpoint: DraftCombineStats
+    per: season
+    season_types: ["Regular Season"]
+    season_param: season_all_time
+    season_type_param: null
+  - name: schedule
+    source: stats
+    endpoint: ScheduleLeagueV2
+    per: season
+    season_types: ["Regular Season"]
+    season_type_param: null
+  - name: standings
+    source: stats
+    endpoint: LeagueStandingsV3
+    per: season
+    season_types: ["Regular Season"]
+    season_type_param: season_type
+
+  # ── Game logs (one call = every game of a season) ────────────────────────
+  - name: game_log_player
+    source: stats
+    endpoint: LeagueGameLog
+    per: season
+    params: { player_or_team_abbreviation: P }
+  - name: game_log_team
+    source: stats
+    endpoint: LeagueGameLog
+    per: season
+    params: { player_or_team_abbreviation: T }
+    note: also the list of games the per-game endpoints use
+
+  # ── Season dashboards ─────────────────────────────────────────────────────
+  - name: dash_player
+    source: stats
+    endpoint: LeagueDashPlayerStats
+    per: season
+    params: { per_mode_detailed: Totals }
+    sweep: { measure_type_detailed_defense: [Base, Advanced, Misc, Scoring, Usage, Defense] }
+  - name: dash_team
+    source: stats
+    endpoint: LeagueDashTeamStats
+    per: season
+    params: { per_mode_detailed: Totals }
+    sweep: { measure_type_detailed_defense: [Base, Advanced, Misc, Four Factors, Scoring, Opponent, Defense] }
+  - name: dash_player_bio
+    source: stats
+    endpoint: LeagueDashPlayerBioStats
+    per: season
+  - name: dash_player_clutch
+    source: stats
+    endpoint: LeagueDashPlayerClutch
+    per: season
+    params: { per_mode_detailed: Totals }
+    sweep: { measure_type_detailed_defense: [Base, Advanced] }
+  - name: dash_team_clutch
+    source: stats
+    endpoint: LeagueDashTeamClutch
+    per: season
+    params: { per_mode_detailed: Totals }
+    sweep: { measure_type_detailed_defense: [Base, Advanced] }
+  - name: dash_player_shot_locations
+    source: stats
+    endpoint: LeagueDashPlayerShotLocations
+    per: season
+    params: { per_mode_detailed: Totals }
+    sweep: { distance_range: [By Zone, 5ft Range] }
+  - name: dash_team_shot_locations
+    source: stats
+    endpoint: LeagueDashTeamShotLocations
+    per: season
+    params: { per_mode_detailed: Totals }
+    sweep: { distance_range: [By Zone, 5ft Range] }
+  - name: estimated_metrics_player
+    source: stats
+    endpoint: PlayerEstimatedMetrics
+    per: season
+    season_type_param: season_type
+  - name: estimated_metrics_team
+    source: stats
+    endpoint: TeamEstimatedMetrics
+    per: season
+    season_type_param: season_type
+
+  # ── Tracking, hustle, defence, play types (season level) ────────────────
+  - name: tracking
+    source: stats
+    endpoint: LeagueDashPtStats
+    per: season
+    params: { per_mode_simple: Totals }
+    sweep:
+      player_or_team: [Player, Team]
+      pt_measure_type: [SpeedDistance, Rebounding, Possessions, CatchShoot, PullUpShot, Defense,
+                        Drives, Passing, ElbowTouch, PostTouch, PaintTouch, Efficiency]
+  - name: tracking_shots_player
+    source: stats
+    endpoint: LeagueDashPlayerPtShot
+    per: season
+    params: { per_mode_simple: Totals }
+  - name: tracking_shots_team
+    source: stats
+    endpoint: LeagueDashTeamPtShot
+    per: season
+    params: { per_mode_simple: Totals }
+  - name: tracking_shots_opponent
+    source: stats
+    endpoint: LeagueDashOppPtShot
+    per: season
+    params: { per_mode_simple: Totals }
+  - name: defend_player
+    source: stats
+    endpoint: LeagueDashPtDefend
+    per: season
+    params: { per_mode_simple: Totals }
+    sweep: { defense_category: [Overall, 3 Pointers, 2 Pointers, Less Than 6Ft, Less Than 10Ft, Greater Than 15Ft] }
+  - name: defend_team
+    source: stats
+    endpoint: LeagueDashPtTeamDefend
+    per: season
+    params: { per_mode_simple: Totals }
+    sweep: { defense_category: [Overall, 3 Pointers, 2 Pointers, Less Than 6Ft, Less Than 10Ft, Greater Than 15Ft] }
+  - name: hustle_player
+    source: stats
+    endpoint: LeagueHustleStatsPlayer
+    per: season
+    params: { per_mode_time: Totals }
+  - name: hustle_team
+    source: stats
+    endpoint: LeagueHustleStatsTeam
+    per: season
+    params: { per_mode_time: Totals }
+  - name: season_matchups
+    source: stats
+    endpoint: LeagueSeasonMatchups
+    per: season
+    season_types: ["Regular Season", "Playoffs"]
+    season_type_param: season_type_playoffs
+    params: { per_mode_simple: Totals }
+  - name: play_types
+    source: stats
+    endpoint: SynergyPlayTypes
+    per: season
+    season_types: ["Regular Season", "Playoffs"]
+    params: { per_mode_simple: Totals }
+    sweep:
+      player_or_team_abbreviation: [P, T]
+      type_grouping_nullable: [offensive, defensive]
+      play_type_nullable: [Transition, Isolation, PRBallHandler, PRRollman, Postup, Spotup,
+                           Handoff, Cut, OffScreen, OffRebound, Misc]
+  - name: lineups
+    source: stats
+    endpoint: LeagueDashLineups
+    per: season
+    params: { per_mode_detailed: Totals }
+    sweep:
+      group_quantity: [5, 2]
+      measure_type_detailed_defense: [Base, Advanced]
+
+  # ── Shots (one call = every shot in a season) ────────────────────────────
+  - name: shots
+    source: stats
+    endpoint: ShotChartDetail
+    per: season
+    season_param: season_nullable
+    params: { team_id: 0, player_id: 0, context_measure_simple: FGA }
+
+  # ── Per game: stats.nba.com ──────────────────────────────────────────────
+  - { name: box_summary,      source: stats, endpoint: BoxScoreSummaryV3,     per: game, note: "officials, inactive players, line score, arena" }
+  - { name: box_traditional,  source: stats, endpoint: BoxScoreTraditionalV3, per: game }
+  - { name: box_advanced,     source: stats, endpoint: BoxScoreAdvancedV3,    per: game }
+  - { name: box_misc,         source: stats, endpoint: BoxScoreMiscV3,        per: game }
+  - { name: box_scoring,      source: stats, endpoint: BoxScoreScoringV3,     per: game }
+  - { name: box_usage,        source: stats, endpoint: BoxScoreUsageV3,       per: game }
+  - { name: box_four_factors, source: stats, endpoint: BoxScoreFourFactorsV3, per: game }
+  - { name: box_hustle,       source: stats, endpoint: BoxScoreHustleV2,      per: game }
+  - { name: box_tracking,     source: stats, endpoint: BoxScorePlayerTrackV3, per: game }
+  - { name: box_defensive,    source: stats, endpoint: BoxScoreDefensiveV2,   per: game }
+  - { name: box_matchups,     source: stats, endpoint: BoxScoreMatchupsV3,    per: game, note: "who guarded whom" }
+  - { name: rotation,         source: stats, endpoint: GameRotation,          per: game, note: "every stint on and off the floor" }
+  - { name: pbp,              source: stats, endpoint: PlayByPlayV3,          per: game }
+
+  # ── Per game: cdn.nba.com ─────────────────────────────────────────────────
+  - { name: cdn_box, source: cdn, endpoint: BoxScore,   per: game }
+  - { name: cdn_pbp, source: cdn, endpoint: PlayByPlay, per: game }

@@ -1,72 +1,80 @@
-"""Thin wrapper around nba_api: browser-ish headers, throttle, retries, raw JSON cache.
+"""Thin wrapper around nba_api: spacing between calls, retries, gzipped raw files.
 
-Every endpoint call goes through `fetch()` so endpoint churn only needs fixing here.
+Every call to NBA.com goes through `call()`, so when an endpoint changes it only
+needs fixing here.
 """
 
 from __future__ import annotations
 
+import gzip
 import json
 import random
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
+import nba_api.live.nba.endpoints as live_endpoints
+import nba_api.stats.endpoints as stats_endpoints
 
 ROOT = Path(__file__).resolve().parent.parent
-RAW_DIR = ROOT / "data" / "raw"
+DATA = ROOT / "data"
+RAW_DIR = DATA / "raw"
+LOG_DIR = DATA / "logs"
 
 # Use nba_api's own default headers. Custom "browser-like" headers (Chrome UA,
 # Origin, Accept-Language) made stats.nba.com hang until timeout on 2026-11-19,
 # while the library defaults answered in <1s from the same Mac.
-HEADERS = None
-
-MIN_INTERVAL_S = 1.0
+MIN_INTERVAL_S = {"stats": 0.6, "cdn": 0.6}  # cdn at 0.3s got empty (throttled) responses
 TIMEOUT_S = 30
-MAX_RETRIES = 4
+MAX_TRIES = 3
 
-_last_call = 0.0
+_last_call: dict[str, float] = {}
 
 
-def _throttle() -> None:
-    global _last_call
-    wait = MIN_INTERVAL_S - (time.monotonic() - _last_call)
+class PullError(RuntimeError):
+    pass
+
+
+def _throttle(source: str) -> None:
+    wait = MIN_INTERVAL_S[source] - (time.monotonic() - _last_call.get(source, 0.0))
     if wait > 0:
-        time.sleep(wait + random.uniform(0, 0.3))
-    _last_call = time.monotonic()
+        time.sleep(wait + random.uniform(0, 0.2))
+    _last_call[source] = time.monotonic()
 
 
-def _cache_path(endpoint_name: str, params: dict[str, Any]) -> Path:
-    key = "_".join(f"{k}={v}" for k, v in sorted(params.items()))
-    safe = key.replace(" ", "-").replace("/", "-")
-    return RAW_DIR / endpoint_name / f"{safe}.json"
+def _endpoint_class(source: str, name: str):
+    module = stats_endpoints if source == "stats" else live_endpoints
+    return getattr(module, name)
 
 
-def fetch(endpoint_cls, *, refresh: bool = False, **params) -> dict[str, Any]:
-    """Call an nba_api endpoint class, caching the raw JSON response on disk."""
-    path = _cache_path(endpoint_cls.__name__, params)
-    if path.exists() and not refresh:
-        return json.loads(path.read_text())
-
+def call(source: str, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Call one endpoint and return the raw JSON dict. Retries with backoff."""
+    cls = _endpoint_class(source, endpoint)
     last_err: Exception | None = None
-    for attempt in range(MAX_RETRIES):
-        _throttle()
+    for attempt in range(MAX_TRIES):
+        _throttle(source)
         try:
-            kwargs = {"headers": HEADERS} if HEADERS else {}
-            ep = endpoint_cls(**params, **kwargs, timeout=TIMEOUT_S)
-            data = ep.get_dict()
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(data))
-            return data
-        except Exception as err:  # network timeouts, JSON errors, 5xx
+            return cls(**params, timeout=TIMEOUT_S).get_dict()
+        except Exception as err:  # timeouts, bad JSON, 4xx/5xx surfaced as parse errors
             last_err = err
-            backoff = 2**attempt * 2
-            print(f"  {endpoint_cls.__name__} attempt {attempt + 1} failed: {err!r}; retry in {backoff}s")
-            time.sleep(backoff)
-    raise RuntimeError(f"{endpoint_cls.__name__} failed after {MAX_RETRIES} tries") from last_err
+            time.sleep(2 ** attempt * 3)
+    raise PullError(f"{endpoint} {params} failed after {MAX_TRIES} tries: {last_err!r}") from last_err
 
 
-def result_set(data: dict[str, Any], index: int = 0) -> pd.DataFrame:
-    """Turn one resultSet of a stats.nba.com response into a DataFrame."""
-    rs = data["resultSets"][index]
-    return pd.DataFrame(rs["rowSet"], columns=[c.lower() for c in rs["headers"]])
+def save(path: Path, source: str, endpoint: str, params: dict[str, Any], data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc = {
+        "request": {"source": source, "endpoint": endpoint, "params": params},
+        "pulled_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "response": data,
+    }
+    tmp = path.with_suffix(".tmp")
+    with gzip.open(tmp, "wt", encoding="utf-8") as f:
+        json.dump(doc, f, separators=(",", ":"))
+    tmp.replace(path)  # never leave a half-written file behind
+
+
+def read(path: Path) -> dict[str, Any]:
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        return json.load(f)
