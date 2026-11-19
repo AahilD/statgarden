@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: fact_player_game
+    description: One row per player per game, with box score and context fields.
+    columns:
+      - name: player_game_key
+        data_tests: [unique, not_null]
+      - name: player_id
+        data_tests: [not_null]
+      - name: game_id
+        data_tests: [not_null]
+      - name: game_date
+        data_tests: [not_null]
+      - name: season_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["Regular Season", "Play-In", "Playoffs"]
+      - name: opp_team_id
+        data_tests: [not_null]
+      - name: is_home
+        data_tests: [not_null]
+      - name: min
+        data_tests: [not_null]
+      - name: pts
+        data_tests: [not_null]

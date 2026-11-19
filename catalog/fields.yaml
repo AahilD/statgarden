@@ -1,0 +1,503 @@
+# StatGarden field catalog (draft v0, 2026-11-19)
+#
+# The builder, lib/sql.ts and the API all read this file. A PivotSpec may only
+# reference field ids that appear here; nothing user-typed goes into SQL.
+#
+# Field keys
+#   id          stable id used in PivotSpecs and URLs (never rename once shared)
+#   label       full name shown in the field list
+#   short       column header / chip text
+#   group       section in the field list
+#   kind        dimension | measure
+#   type        dimensions: text | int | date | bool | bucket
+#   expr        SQL over the mart row (fact_player_game joined to dims)
+#   bins        bucket dimensions: ordered labels; expr must return one of them
+#   agg         measures: sum | count | ratio | weighted_avg
+#   requires    ratio measures: base measures summed first, then `formula` is
+#               applied after grouping. Needed because DuckDB PIVOT ... USING
+#               allows one aggregate per expression, and because averaging
+#               per-game percentages gives the wrong answer.
+#   weight      weighted_avg measures: the measure used as the weight (minutes)
+#   modes       which value modes the builder offers: total | per_game | per_36
+#   default_mode
+#   format      d3-format string (same syntax Vega-Lite uses)
+#   higher_is_better  for percentile chips and colour scales
+#   source      where the data comes from today:
+#                 gamelog   LeagueGameLog (loaded now)
+#                 derived   computed in transform SQL from gamelog + dim_game
+#                 dim       dim_player / dim_team (seed job, not built yet)
+#                 box_v3    BoxScoreTraditionalV3 / AdvancedV3 (backfill, not built yet)
+
+datasets:
+  - id: player_game
+    label: Player games
+    grain: one row per player per game
+    table: fact_player_game
+    default:
+      rows: [player]
+      values: [pts]
+      filters:
+        - { field: season, op: in, value: ["2025-26"] }
+        - { field: season_type, op: in, value: ["Regular Season"] }
+
+groups: [Player, Team, Game, Context, Box score, Shooting, Advanced]
+
+fields:
+  # ── Player ────────────────────────────────────────────────────────────────
+  - id: player
+    label: Player
+    short: Player
+    group: Player
+    kind: dimension
+    type: text
+    key: player_id
+    expr: player_name
+    source: gamelog
+    description: The player. Grouped by player id, shown by name.
+
+  - id: position
+    label: Position
+    short: Pos
+    group: Player
+    kind: dimension
+    type: text
+    expr: position
+    source: dim
+    description: Listed position (G, F, C, G-F, F-C).
+
+  - id: age_bucket
+    label: Age on game day
+    short: Age
+    group: Player
+    kind: dimension
+    type: bucket
+    bins: ["≤21", "22-24", "25-27", "28-30", "31-33", "34+"]
+    expr: >-
+      CASE WHEN age_days / 365.25 < 22 THEN '≤21'
+           WHEN age_days / 365.25 < 25 THEN '22-24'
+           WHEN age_days / 365.25 < 28 THEN '25-27'
+           WHEN age_days / 365.25 < 31 THEN '28-30'
+           WHEN age_days / 365.25 < 34 THEN '31-33'
+           ELSE '34+' END
+    source: dim
+    description: Age in years on the day of the game.
+
+  - id: draft_round
+    label: Draft round
+    short: Draft rd
+    group: Player
+    kind: dimension
+    type: text
+    expr: "coalesce(cast(draft_round AS VARCHAR), 'Undrafted')"
+    source: dim
+    description: Round drafted in, or Undrafted.
+
+  - id: is_starter
+    label: Starter / bench
+    short: Role
+    group: Player
+    kind: dimension
+    type: bucket
+    bins: [Starter, Bench]
+    expr: "CASE WHEN is_starter THEN 'Starter' ELSE 'Bench' END"
+    source: box_v3
+    description: Whether the player started the game. Not in LeagueGameLog; needs box scores.
+
+  # ── Team ──────────────────────────────────────────────────────────────────
+  - id: team
+    label: Team
+    short: Team
+    group: Team
+    kind: dimension
+    type: text
+    key: team_id
+    expr: team_abbreviation
+    source: gamelog
+    description: The player's team in that game (so traded players split correctly).
+
+  - id: opponent
+    label: Opponent
+    short: Opp
+    group: Team
+    kind: dimension
+    type: text
+    key: opp_team_id
+    expr: opp_abbreviation
+    source: derived
+    description: The team they played against.
+
+  - id: conference
+    label: Conference
+    short: Conf
+    group: Team
+    kind: dimension
+    type: text
+    expr: conference
+    source: dim
+    description: East or West (the player's team).
+
+  - id: opp_conference
+    label: Opponent conference
+    short: Opp conf
+    group: Team
+    kind: dimension
+    type: text
+    expr: opp_conference
+    source: dim
+    description: Whether the opponent is East or West.
+
+  # ── Game ──────────────────────────────────────────────────────────────────
+  - id: season
+    label: Season
+    short: Season
+    group: Game
+    kind: dimension
+    type: text
+    expr: season
+    source: gamelog
+    description: Season label, e.g. 2025-26.
+
+  - id: season_type
+    label: Season type
+    short: Type
+    group: Game
+    kind: dimension
+    type: text
+    bins: [Regular Season, Play-In, Playoffs]
+    expr: season_type
+    source: gamelog
+    description: Regular season, play-in or playoffs.
+
+  - id: game_date
+    label: Game date
+    short: Date
+    group: Game
+    kind: dimension
+    type: date
+    expr: game_date
+    source: gamelog
+    description: Local date of the game.
+
+  - id: month
+    label: Month
+    short: Month
+    group: Game
+    kind: dimension
+    type: bucket
+    bins: [Oct, Nov, Dec, Jan, Feb, Mar, Apr, May, Jun]
+    expr: "strftime(game_date, '%b')"
+    source: derived
+    description: Calendar month of the game.
+
+  - id: weekday
+    label: Day of week
+    short: Day
+    group: Game
+    kind: dimension
+    type: bucket
+    bins: [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
+    expr: "strftime(game_date, '%a')"
+    source: derived
+    description: Day of the week the game was played.
+
+  - id: all_star_split
+    label: Before / after All-Star break
+    short: ASB
+    group: Game
+    kind: dimension
+    type: bucket
+    bins: [Pre All-Star, Post All-Star]
+    expr: "CASE WHEN is_post_all_star THEN 'Post All-Star' ELSE 'Pre All-Star' END"
+    source: dim
+    description: Needs the All-Star date per season in dim_season.
+
+  - id: game_number_bucket
+    label: Team game number
+    short: Game #
+    group: Game
+    kind: dimension
+    type: bucket
+    bins: ["1-20", "21-41", "42-61", "62-82", "Playoffs"]
+    expr: >-
+      CASE WHEN season_type <> 'Regular Season' THEN 'Playoffs'
+           WHEN game_number <= 20 THEN '1-20'
+           WHEN game_number <= 41 THEN '21-41'
+           WHEN game_number <= 61 THEN '42-61'
+           ELSE '62-82' END
+    source: derived
+    description: Where in the team's season the game fell.
+
+  # ── Context ───────────────────────────────────────────────────────────────
+  - id: venue
+    label: Home / away
+    short: H/A
+    group: Context
+    kind: dimension
+    type: bucket
+    bins: [Home, Away]
+    expr: "CASE WHEN is_home THEN 'Home' ELSE 'Away' END"
+    source: derived
+    description: From the matchup text ('vs.' = home, '@' = away).
+
+  - id: result
+    label: Win / loss
+    short: W/L
+    group: Context
+    kind: dimension
+    type: bucket
+    bins: [W, L]
+    expr: "CASE WHEN is_win THEN 'W' ELSE 'L' END"
+    source: gamelog
+    description: Whether the player's team won.
+
+  - id: margin_bucket
+    label: Final margin
+    short: Margin
+    group: Context
+    kind: dimension
+    type: bucket
+    bins: ["Lost 15+", "Lost 6-14", "Within 5", "Won 6-14", "Won 15+"]
+    expr: >-
+      CASE WHEN margin <= -15 THEN 'Lost 15+'
+           WHEN margin <= -6  THEN 'Lost 6-14'
+           WHEN margin <= 5   THEN 'Within 5'
+           WHEN margin <= 14  THEN 'Won 6-14'
+           ELSE 'Won 15+' END
+    source: derived
+    description: Team's final point margin. A rough stand-in for close games until play-by-play clutch data exists.
+
+  - id: rest_days
+    label: Days of rest
+    short: Rest
+    group: Context
+    kind: dimension
+    type: bucket
+    bins: ["0 (B2B)", "1", "2", "3+"]
+    expr: >-
+      CASE WHEN rest_days IS NULL OR rest_days >= 3 THEN '3+'
+           WHEN rest_days = 0 THEN '0 (B2B)'
+           ELSE cast(rest_days AS VARCHAR) END
+    source: derived
+    description: Days off for the player's team since its previous game. First game of the season counts as 3+.
+
+  - id: opp_strength
+    label: Opponent record before game
+    short: Opp W%
+    group: Context
+    kind: dimension
+    type: bucket
+    bins: ["Under .400", ".400-.549", ".550+"]
+    expr: >-
+      CASE WHEN opp_win_pct_before < 0.400 THEN 'Under .400'
+           WHEN opp_win_pct_before < 0.550 THEN '.400-.549'
+           ELSE '.550+' END
+    source: derived
+    description: Opponent's win % going into the game (not end of season, to avoid hindsight).
+
+  - id: minutes_bucket
+    label: Minutes played
+    short: Min range
+    group: Context
+    kind: dimension
+    type: bucket
+    bins: ["<10", "10-19", "20-29", "30-35", "36+"]
+    expr: >-
+      CASE WHEN min < 10 THEN '<10' WHEN min < 20 THEN '10-19'
+           WHEN min < 30 THEN '20-29' WHEN min < 36 THEN '30-35' ELSE '36+' END
+    source: gamelog
+    description: Minutes in that game. Also handy as a filter (e.g. 20+ minutes).
+
+  # ── Box score (summable) ──────────────────────────────────────────────────
+  - id: games
+    label: Games played
+    short: GP
+    group: Box score
+    kind: measure
+    agg: count
+    expr: "count(*)"
+    modes: [total]
+    format: "d"
+    higher_is_better: true
+    source: gamelog
+    description: Number of games in the group.
+
+  - { id: min,  label: Minutes,            short: MIN, group: Box score, kind: measure, agg: sum, expr: min,  modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Minutes played. }
+  - { id: pts,  label: Points,             short: PTS, group: Box score, kind: measure, agg: sum, expr: pts,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Points scored. }
+  - { id: reb,  label: Rebounds,           short: REB, group: Box score, kind: measure, agg: sum, expr: reb,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Total rebounds. }
+  - { id: oreb, label: Offensive rebounds, short: OREB, group: Box score, kind: measure, agg: sum, expr: oreb, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Offensive rebounds. }
+  - { id: dreb, label: Defensive rebounds, short: DREB, group: Box score, kind: measure, agg: sum, expr: dreb, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Defensive rebounds. }
+  - { id: ast,  label: Assists,            short: AST, group: Box score, kind: measure, agg: sum, expr: ast,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Assists. }
+  - { id: stl,  label: Steals,             short: STL, group: Box score, kind: measure, agg: sum, expr: stl,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Steals. }
+  - { id: blk,  label: Blocks,             short: BLK, group: Box score, kind: measure, agg: sum, expr: blk,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Blocks. }
+  - { id: tov,  label: Turnovers,          short: TOV, group: Box score, kind: measure, agg: sum, expr: tov,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: false, source: gamelog, description: Turnovers. }
+  - { id: pf,   label: Personal fouls,     short: PF,  group: Box score, kind: measure, agg: sum, expr: pf,   modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: false, source: gamelog, description: Personal fouls. }
+  - { id: plus_minus, label: Plus-minus,   short: "+/-", group: Box score, kind: measure, agg: sum, expr: plus_minus, modes: [per_game, total], default_mode: per_game, format: "+.1f", higher_is_better: true, source: gamelog, description: Team point margin while the player was on the floor. }
+
+  - id: double_doubles
+    label: Double-doubles
+    short: DD
+    group: Box score
+    kind: measure
+    agg: sum
+    expr: >-
+      cast((pts >= 10)::INT + (reb >= 10)::INT + (ast >= 10)::INT
+           + (stl >= 10)::INT + (blk >= 10)::INT >= 2 AS INT)
+    modes: [total]
+    format: "d"
+    higher_is_better: true
+    source: gamelog
+    description: Games with 10+ in at least two of points, rebounds, assists, steals, blocks.
+
+  - id: triple_doubles
+    label: Triple-doubles
+    short: TD
+    group: Box score
+    kind: measure
+    agg: sum
+    expr: >-
+      cast((pts >= 10)::INT + (reb >= 10)::INT + (ast >= 10)::INT
+           + (stl >= 10)::INT + (blk >= 10)::INT >= 3 AS INT)
+    modes: [total]
+    format: "d"
+    higher_is_better: true
+    source: gamelog
+    description: Games with 10+ in at least three of points, rebounds, assists, steals, blocks.
+
+  - id: game_score
+    label: Game Score
+    short: GmSc
+    group: Box score
+    kind: measure
+    agg: sum
+    expr: >-
+      pts + 0.4 * fgm - 0.7 * fga - 0.4 * (fta - ftm) + 0.7 * oreb + 0.3 * dreb
+      + stl + 0.7 * ast + 0.7 * blk - 0.4 * pf - tov
+    modes: [per_game, total]
+    default_mode: per_game
+    format: ".1f"
+    higher_is_better: true
+    source: gamelog
+    description: John Hollinger's single-game productivity score. Roughly 10 is average, 40 is outstanding.
+
+  # ── Shooting (makes/attempts are summable; % are ratios) ──────────────────
+  - { id: fgm,  label: Field goals made,      short: FGM, group: Shooting, kind: measure, agg: sum, expr: fgm,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: gamelog, description: Field goals made. }
+  - { id: fga,  label: Field goal attempts,   short: FGA, group: Shooting, kind: measure, agg: sum, expr: fga,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", source: gamelog, description: Field goals attempted. }
+  - { id: fg3m, label: 3-pointers made,       short: 3PM, group: Shooting, kind: measure, agg: sum, expr: fg3m, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: gamelog, description: Three-pointers made. }
+  - { id: fg3a, label: 3-point attempts,      short: 3PA, group: Shooting, kind: measure, agg: sum, expr: fg3a, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", source: gamelog, description: Three-pointers attempted. }
+  - { id: ftm,  label: Free throws made,      short: FTM, group: Shooting, kind: measure, agg: sum, expr: ftm,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: gamelog, description: Free throws made. }
+  - { id: fta,  label: Free throw attempts,   short: FTA, group: Shooting, kind: measure, agg: sum, expr: fta,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", source: gamelog, description: Free throws attempted. }
+
+  - id: fg_pct
+    label: Field goal %
+    short: FG%
+    group: Shooting
+    kind: measure
+    agg: ratio
+    requires: [fgm, fga]
+    formula: "fgm / nullif(fga, 0)"
+    format: ".1%"
+    higher_is_better: true
+    source: gamelog
+    description: Field goals made ÷ attempted, over the whole group.
+
+  - id: fg3_pct
+    label: 3-point %
+    short: 3P%
+    group: Shooting
+    kind: measure
+    agg: ratio
+    requires: [fg3m, fg3a]
+    formula: "fg3m / nullif(fg3a, 0)"
+    format: ".1%"
+    higher_is_better: true
+    source: gamelog
+    description: Threes made ÷ attempted.
+
+  - id: ft_pct
+    label: Free throw %
+    short: FT%
+    group: Shooting
+    kind: measure
+    agg: ratio
+    requires: [ftm, fta]
+    formula: "ftm / nullif(fta, 0)"
+    format: ".1%"
+    higher_is_better: true
+    source: gamelog
+    description: Free throws made ÷ attempted.
+
+  - id: efg_pct
+    label: Effective FG %
+    short: eFG%
+    group: Shooting
+    kind: measure
+    agg: ratio
+    requires: [fgm, fg3m, fga]
+    formula: "(fgm + 0.5 * fg3m) / nullif(fga, 0)"
+    format: ".1%"
+    higher_is_better: true
+    source: gamelog
+    description: FG% with threes counted as 1.5 makes.
+
+  - id: ts_pct
+    label: True shooting %
+    short: TS%
+    group: Shooting
+    kind: measure
+    agg: ratio
+    requires: [pts, fga, fta]
+    formula: "pts / nullif(2 * (fga + 0.44 * fta), 0)"
+    format: ".1%"
+    higher_is_better: true
+    source: gamelog
+    description: Scoring efficiency including threes and free throws.
+
+  - id: fg3a_rate
+    label: 3-point attempt rate
+    short: 3PAr
+    group: Shooting
+    kind: measure
+    agg: ratio
+    requires: [fg3a, fga]
+    formula: "fg3a / nullif(fga, 0)"
+    format: ".1%"
+    source: gamelog
+    description: Share of shots that are threes.
+
+  - id: ft_rate
+    label: Free throw rate
+    short: FTr
+    group: Shooting
+    kind: measure
+    agg: ratio
+    requires: [fta, fga]
+    formula: "fta / nullif(fga, 0)"
+    format: ".3f"
+    higher_is_better: true
+    source: gamelog
+    description: Free throw attempts per field goal attempt.
+
+  - id: ast_tov
+    label: Assist-to-turnover ratio
+    short: AST/TO
+    group: Shooting
+    kind: measure
+    agg: ratio
+    requires: [ast, tov]
+    formula: "ast / nullif(tov, 0)"
+    format: ".2f"
+    higher_is_better: true
+    source: gamelog
+    description: Assists per turnover.
+
+  # ── Advanced (per-game rates from V3 box scores) ──────────────────────────
+  # These arrive as per-game rates, so they're averaged weighted by minutes.
+  # Exact versions need possessions; revisit once box_v3 is loaded.
+  - { id: usg_pct, label: Usage %,          short: USG%,  group: Advanced, kind: measure, agg: weighted_avg, expr: usg_pct, weight: min, format: ".1%", source: box_v3, description: Share of team plays used by the player while on the floor. }
+  - { id: off_rtg, label: Offensive rating, short: ORTG,  group: Advanced, kind: measure, agg: weighted_avg, expr: off_rtg, weight: min, format: ".1f", higher_is_better: true,  source: box_v3, description: Team points per 100 possessions with the player on the floor. }
+  - { id: def_rtg, label: Defensive rating, short: DRTG,  group: Advanced, kind: measure, agg: weighted_avg, expr: def_rtg, weight: min, format: ".1f", higher_is_better: false, source: box_v3, description: Opponent points per 100 possessions with the player on the floor. }
+  - { id: net_rtg, label: Net rating,       short: NET,   group: Advanced, kind: measure, agg: weighted_avg, expr: net_rtg, weight: min, format: "+.1f", higher_is_better: true, source: box_v3, description: Offensive minus defensive rating. }
+  - { id: ast_pct, label: Assist %,         short: AST%,  group: Advanced, kind: measure, agg: weighted_avg, expr: ast_pct, weight: min, format: ".1%", higher_is_better: true,  source: box_v3, description: Share of teammate baskets the player assisted while on the floor. }
+  - { id: reb_pct, label: Rebound %,        short: REB%,  group: Advanced, kind: measure, agg: weighted_avg, expr: reb_pct, weight: min, format: ".1%", higher_is_better: true,  source: box_v3, description: Share of available rebounds the player grabbed while on the floor. }
+  - { id: pace,    label: Pace,             short: PACE,  group: Advanced, kind: measure, agg: weighted_avg, expr: pace,    weight: min, format: ".1f", source: box_v3, description: Possessions per 48 minutes while the player was on the floor. }
+  - { id: pie,     label: PIE,              short: PIE,   group: Advanced, kind: measure, agg: weighted_avg, expr: pie,     weight: min, format: ".1%", higher_is_better: true,  source: box_v3, description: NBA.com Player Impact Estimate. }

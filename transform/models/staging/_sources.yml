@@ -1,0 +1,12 @@
+# Raw tables written by the Python loader. Hand-written for now; once the
+# endpoint registry exists (ingest/endpoints.yaml) this file gets generated from it.
+version: 2
+
+sources:
+  - name: raw
+    schema: main
+    tables:
+      - name: raw_player_game_log
+        description: LeagueGameLog, player rows, as returned by stats.nba.com.
+      - name: raw_team_game_log
+        description: LeagueGameLog, team rows, as returned by stats.nba.com.

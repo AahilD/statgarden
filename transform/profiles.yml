@@ -1,0 +1,8 @@
+# Local DuckDB file, no credentials. Run dbt from this folder (make build does).
+statgarden:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('STATGARDEN_DB', '../data/statgarden.duckdb') }}"
+      threads: 4
