@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Daily cdn.nba.com pull at 9:00. If the Mac is asleep then, it runs on wake.
+     Install:  cp this file to ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.statgarden.daily-cdn.plist
+     Remove:   launchctl unload ~/Library/LaunchAgents/com.statgarden.daily-cdn.plist && rm that file -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.statgarden.daily-cdn</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/aahil/Documents/Code/statgarden/scripts/daily_cdn.sh</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/aahil/Documents/Code/statgarden/data/logs/launchd_daily_cdn.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/aahil/Documents/Code/statgarden/data/logs/launchd_daily_cdn.out</string>
+</dict>
+</plist>
