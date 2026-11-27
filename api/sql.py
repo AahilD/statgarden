@@ -286,26 +286,8 @@ def _compare(
         params.append(val)
 
 
-def build(spec: PivotSpec, cat: Catalog) -> Query:
-    ds = cat.dataset(spec.dataset)
-    if ds is None:
-        raise SpecError(f"unknown dataset {spec.dataset!r}")
-    if not spec.values:
-        raise SpecError("add at least one value")
-    if len(set(spec.rows + spec.columns)) != len(spec.rows) + len(spec.columns):
-        raise SpecError("a field can only be used once across rows and columns")
-
-    bld = Builder(spec, cat, ds)
-    row_fields = [bld.field(f, "dimension") for f in spec.rows]
-    col_fields = [bld.field(f, "dimension") for f in spec.columns]
-    dims = row_fields + col_fields
-
-    values: list[ValueCol] = []
-    for v in spec.values:
-        vc = bld.value(v.field, v.mode)
-        if not any(x.key == vc.key for x in values):
-            values.append(vc)
-
+def apply_filters(spec: PivotSpec, bld: Builder):
+    """WHERE parts (on game rows) and HAVING parts (on whole groups) for the spec's filters."""
     # filters: dimensions and per-game numbers → WHERE on the game rows;
     # whole-group numbers → applied after adding up (see `having` below)
     where: list[str] = []
@@ -338,6 +320,31 @@ def build(spec: PivotSpec, cat: Catalog) -> Query:
                 raise SpecError(f"{name}: filter on the number itself, not its share")
             vc = bld.value(flt.field, None if is_calc else flt.mode)
             having.append((vc.sql, flt.op, flt.value, flt.ends, flt.outside))
+
+    return where, params, having
+
+
+def build(spec: PivotSpec, cat: Catalog) -> Query:
+    ds = cat.dataset(spec.dataset)
+    if ds is None:
+        raise SpecError(f"unknown dataset {spec.dataset!r}")
+    if not spec.values:
+        raise SpecError("add at least one value")
+    if len(set(spec.rows + spec.columns)) != len(spec.rows) + len(spec.columns):
+        raise SpecError("a field can only be used once across rows and columns")
+
+    bld = Builder(spec, cat, ds)
+    row_fields = [bld.field(f, "dimension") for f in spec.rows]
+    col_fields = [bld.field(f, "dimension") for f in spec.columns]
+    dims = row_fields + col_fields
+
+    values: list[ValueCol] = []
+    for v in spec.values:
+        vc = bld.value(v.field, v.mode)
+        if not any(x.key == vc.key for x in values):
+            values.append(vc)
+
+    where, params, having = apply_filters(spec, bld)
 
     def select_for(fields: list[FieldDef]) -> list[tuple[str, str]]:
         """(expression, column name) pairs; a field with a key also groups by its key."""

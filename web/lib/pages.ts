@@ -5,10 +5,20 @@ const API_URL = process.env.STATGARDEN_API_URL ?? "http://localhost:8000";
 
 /** GET from the API on the server. null for a 404 (the page shows "not found"); throws otherwise. */
 export async function apiGet<T>(path: string): Promise<T | null> {
-  const r = await fetch(`${API_URL}${path}`, { signal: AbortSignal.timeout(8000) });
+  const r = await fetchOnceMore(`${API_URL}${path}`);
   if (r.status === 404) return null;
   if (!r.ok) throw new Error(`${path}: ${r.status}`);
   return r.json();
+}
+
+/** One retry after a short wait: the API restarts in a second or two (nightly publish, dev reloads). */
+async function fetchOnceMore(url: string) {
+  try {
+    return await fetch(url, { signal: AbortSignal.timeout(8000) });
+  } catch {
+    await new Promise((r) => setTimeout(r, 1500));
+    return fetch(url, { signal: AbortSignal.timeout(8000) });
+  }
 }
 
 export type BoxTotals = {
@@ -62,7 +72,7 @@ export type PlayerPage = {
   seasons: (BoxTotals & { season: string; season_type: SeasonType; teams: string })[];
   career: (BoxTotals & { season_type: SeasonType })[];
   games: GameLine[];
-  highs: Record<"pts" | "reb" | "ast" | "fg3m", High | null>;
+  highs: Record<"pts" | "reb" | "ast" | "stl" | "blk" | "fg3m", High | null>;
 };
 
 export type GameLine = {
@@ -150,6 +160,15 @@ export type TeamListItem = {
   division: string | null;
   wins: number;
   losses: number;
+  pts: number | null;
+  opp_pts: number | null;
+  net_rtg: number | null;
+  home: string | null;
+  road: string | null;
+  l10: string | null;
+  streak: string | null;
+  conf_record: string | null;
+  playoff_rank: number | null; // NBA.com's conference seed, used to break ties in win %
 };
 
 export type GamePlayer = {

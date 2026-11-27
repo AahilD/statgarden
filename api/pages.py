@@ -105,7 +105,7 @@ def player(player_id: int):
     )
     # best games for the headline numbers, with where and when
     highs = {}
-    for stat in ("pts", "reb", "ast", "fg3m"):
+    for stat in ("pts", "reb", "ast", "stl", "blk", "fg3m"):
         h = _rows(
             cur.execute(
                 f"""
@@ -206,20 +206,35 @@ def team(abbr: str):
 
 @router.get("/teams")
 def teams_list():
-    """Every current team with this season's record, for the teams index."""
+    """Every current team with this season's regular-season standing, for the teams index.
+
+    Wins, losses and points come from our game logs (stats.nba.com wins every disagreement);
+    home/road, last 10, streak and conference record come from NBA.com's standings.
+    """
     cur = db.cursor()
     return _rows(
         cur.execute(
             """
-            WITH cur AS (SELECT max(season) AS s FROM fact_team_game)
+            WITH cur AS (SELECT max(season) AS s FROM fact_team_game),
+            g AS (
+              SELECT team_id, count(*) FILTER (WHERE is_win) AS wins, count(*) FILTER (WHERE NOT is_win) AS losses,
+                     avg(pts) AS pts, avg(opp_pts) AS opp_pts,
+                     100 * (sum(pts) / nullif(sum(poss), 0) - sum(opp_pts) / nullif(sum(opp_poss), 0)) AS net_rtg
+              FROM fact_team_game WHERE season = (SELECT s FROM cur) AND season_type = 'Regular Season'
+              GROUP BY team_id),
+            st AS (
+              SELECT CAST(team_id AS bigint) AS team_id, home, road, l10, trim(str_current_streak) AS streak,
+                     trim(conference_record) AS conf_record, try_cast(playoff_rank AS int) AS playoff_rank
+              FROM raw_standings__standings WHERE _season = (SELECT s FROM cur)
+              QUALIFY row_number() OVER (PARTITION BY team_id ORDER BY _pulled_at DESC) = 1)
             SELECT d.team_id AS id, d.team_abbreviation AS abbr, d.team_name AS name, ts.conference, ts.division,
-                   count(g.game_id) FILTER (WHERE g.is_win) AS wins,
-                   count(g.game_id) FILTER (WHERE NOT g.is_win) AS losses
+                   coalesce(g.wins, 0) AS wins, coalesce(g.losses, 0) AS losses, g.pts, g.opp_pts, g.net_rtg,
+                   st.home, st.road, st.l10, st.streak, st.conf_record, st.playoff_rank
             FROM dim_team d
             LEFT JOIN (SELECT * FROM stg_team_season WHERE season = (SELECT s FROM cur)) ts USING (team_id)
-            LEFT JOIN fact_team_game g ON g.team_id = d.team_id AND g.season = (SELECT s FROM cur)
-                 AND g.season_type = 'Regular Season'
-            GROUP BY ALL ORDER BY ts.conference, ts.division, wins DESC, d.team_name"""
+            LEFT JOIN g USING (team_id)
+            LEFT JOIN st USING (team_id)
+            ORDER BY ts.conference, ts.division, wins DESC, d.team_name"""
         )
     )
 

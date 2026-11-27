@@ -24,6 +24,7 @@ def test_player_page():
     assert len(d["games"]) == 15
     assert d["games"][0]["game_date"] >= d["games"][-1]["game_date"]  # newest first
     assert d["highs"]["pts"]["value"] >= max(g["pts"] for g in d["games"])
+    assert {"pts", "reb", "ast", "stl", "blk", "fg3m"} <= set(d["highs"])
 
 
 def test_traded_player_lists_both_teams():
@@ -59,6 +60,10 @@ def test_teams_list():
     teams = client.get("/teams").json()
     assert len(teams) == 30
     assert {t["conference"] for t in teams} == {"East", "West"}
+    # standings columns: records and points from our games, conference record and seed from NBA.com
+    for key in ("pts", "opp_pts", "net_rtg", "home", "road", "l10", "streak", "conf_record", "playoff_rank"):
+        assert key in teams[0]
+    assert all(t["wins"] + t["losses"] > 0 for t in teams)
 
 
 def test_search_finds_teams_by_name_and_players():

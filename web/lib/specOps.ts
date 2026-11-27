@@ -1,5 +1,6 @@
 // Pure edits to a PivotSpec. The builder only changes the view through these.
 import type { FieldMeta } from "./api";
+import { nextSort } from "./sortCycle";
 import { LIMITS, SHARE_MODES, type ChartView, type Filter, type Mode, type PivotSpec } from "./spec";
 
 export type TableWell = "rows" | "columns" | "values" | "filters";
@@ -112,10 +113,10 @@ export function toggleIn(spec: PivotSpec, field: string, value: string): PivotSp
   return { ...spec, filters: [...others, { field, op: "in", value: next }] };
 }
 
+/** Clicking a column header: low to high, then high to low, then the default order (see lib/sortCycle). */
 export function setSort(spec: PivotSpec, by: string): PivotSpec {
-  const cur = spec.sort[0];
-  const dir = cur && cur.by === by && cur.dir === "desc" ? "asc" : "desc";
-  return { ...spec, sort: [{ by, dir }] };
+  const next = nextSort(spec.sort[0], by);
+  return { ...spec, sort: next ? [next] : [] };
 }
 
 export function isComplete(f: Filter): boolean {

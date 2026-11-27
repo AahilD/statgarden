@@ -19,6 +19,10 @@
   --blue: #3d45aa;        /* Royal Blue */
   --green: #2e5a44;       /* Forest Green */
   --red: #da3d20;
+  /* shot map scale, cold to hot: Royal Blue, Slate Teal, Warm Sand, Orange, Red */
+  --teal: #4e878c;        /* Slate Teal */
+  --sand: #d8c7b5;        /* Warm Sand */
+  --court-line: #8c6d53;  /* Warm Mocha, both themes: the dark border is too faint for court lines */
   --on-orange: #141416;   /* text on solid orange */
   --on-color: #ffffff;    /* text on solid blue / green / red */
   --accent: var(--orange);
@@ -73,6 +77,8 @@
   --color-green: var(--green);
   --color-green-soft: var(--green-soft);
   --color-red: var(--red);
+  --color-teal: var(--teal);
+  --color-sand: var(--sand);
   --color-red-soft: var(--red-soft);
   --color-on-orange: var(--on-orange);
   --color-on-color: var(--on-color);

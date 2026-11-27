@@ -6,6 +6,7 @@ import { Providers } from "./providers";
 import { Nav, NavLinks } from "@/components/layout/Nav";
 import { Search } from "@/components/layout/Search";
 import { Mark, Stripes, Wordmark } from "@/components/layout/Brand";
+import { Footer } from "@/components/layout/Footer";
 import "./globals.css";
 
 const jost = Jost({ variable: "--font-jost", subsets: ["latin"], weight: ["500", "600"] });
@@ -54,21 +55,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             </div>
           </header>
           <main className="flex-1">{children}</main>
-          <footer className="mt-16 border-t border-line">
-            <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-4 py-5">
-              <span className="flex items-center gap-2.5 text-[13px]">
-                <Mark size={14} />
-                <Wordmark />
-              </span>
-              <nav aria-label="Footer" className="flex gap-4 text-sm text-ink-2">
-                <Link href="/lab" className="hover:text-ink">Lab</Link>
-                <Link href="/teams" className="hover:text-ink">Teams</Link>
-                <Link href="/glossary" className="hover:text-ink">Glossary</Link>
-              </nav>
-              <span className="label-mono">Data: NBA.com via nba_api · not affiliated with the NBA</span>
-            </div>
-            <Stripes />
-          </footer>
+          <Footer />
         </Providers>
       </body>
     </html>

@@ -74,7 +74,7 @@ export function Wells(p: {
           </Chip>
         ))}
       </WellRow>
-      <WellRow id="columns" title="Columns" hint="Split across, e.g. Home / away" dragging={p.dragging} full={p.spec.columns.length >= LIMITS.columns}>
+      <WellRow id="columns" title="Columns" hint="Split across, e.g. Home / Away" dragging={p.dragging} full={p.spec.columns.length >= LIMITS.columns}>
         {p.spec.columns.map((id, i) => (
           <Chip key={id} tone="green" onRemove={() => p.setSpec((s) => removeAt(s, "columns", i))}>
             {label(id)}

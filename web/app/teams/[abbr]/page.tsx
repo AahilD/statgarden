@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { cacheLife } from "next/cache";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { Dot, Heading, LabLinks, StatTable, Tile, TitleCard, type Column } from "@/components/pages/Parts";
+import { Dot, Heading, LabLinks, Tile, TitleCard } from "@/components/pages/Parts";
+import { RecentGames, Roster, TeamSeasons } from "@/components/pages/TeamTables";
 import { teamLinks } from "@/lib/labLinks";
-import { apiGet, num1, ordinal, pct, perGame, shortDate, signed, TYPE_SHORT, type TeamPage } from "@/lib/pages";
+import { apiGet, num1, ordinal, signed, type TeamPage } from "@/lib/pages";
 
 async function load(abbr: string) {
   "use cache";
@@ -88,56 +88,17 @@ async function Team({ params }: { params: PageProps<"/teams/[abbr]">["params"] }
 
       <section className="mt-12">
         <Heading>{t.season} roster</Heading>
-        <StatTable caption={`${t.name} roster, per game`} columns={ROSTER_COLUMNS} rows={current} rowKey={(r) => String(r.player_id)} />
-        {gone.length > 0 && (
-          <>
-            <p className="label-mono mb-2 mt-6">Played for {t.abbr} this season, now elsewhere</p>
-            <StatTable caption="Former players this season" columns={ROSTER_COLUMNS} rows={gone} rowKey={(r) => String(r.player_id)} rowClass={() => "text-ink-2"} />
-          </>
-        )}
-        <p className="mt-2 font-mono text-[11px] text-ink-2">Regular season, per game, most minutes first.</p>
+        <Roster team={t.name} abbr={t.abbr} current={current} gone={gone} />
       </section>
 
       <section className="mt-12">
         <Heading>Recent games</Heading>
-        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {d.games.map((g) => (
-            <li key={g.game_id}>
-              <Link
-                href={`/games/${g.game_id}`}
-                aria-label={`${g.is_win ? "Win" : "Loss"} ${g.is_home ? "vs" : "at"} ${g.opp}, ${g.pts}–${g.opp_pts}, ${shortDate(g.game_date)}: box score`}
-                className="lift flex items-center gap-3 rounded-card border border-line bg-surface px-4 py-3 text-sm hover:border-line-strong"
-              >
-              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-chip font-mono text-xs text-on-color ${g.is_win ? "bg-green" : "bg-red"}`}>
-                {g.is_win ? "W" : "L"}
-              </span>
-              <span className="min-w-0">
-                <span className="text-ink-2">{g.is_home ? "vs " : "@ "}</span>
-                <span className="font-medium">{g.opp}</span>
-                <span className="block font-mono text-[11px] text-ink-2">
-                  {shortDate(g.game_date)}
-                  {g.season_type !== "Regular Season" && ` · ${TYPE_SHORT[g.season_type]}`}
-                </span>
-              </span>
-              <span className="ml-auto font-mono tabular-nums">
-                {g.pts}–{g.opp_pts}
-              </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <RecentGames games={d.games} />
       </section>
 
       <section className="mt-12">
         <Heading>Season by season</Heading>
-        <StatTable
-          caption={`${t.name} season by season`}
-          columns={SEASON_COLUMNS}
-          rows={d.seasons}
-          rowKey={(r) => `${r.season}-${r.season_type}`}
-          rowClass={(r) => (r.season_type === "Regular Season" ? "" : "text-ink-2")}
-        />
-        <p className="mt-2 font-mono text-[11px] text-ink-2">Ratings are per 100 possessions, from season totals.</p>
+        <TeamSeasons team={t.name} seasons={d.seasons} />
       </section>
 
       <section className="mt-12">
@@ -147,48 +108,3 @@ async function Team({ params }: { params: PageProps<"/teams/[abbr]">["params"] }
     </div>
   );
 }
-
-type RosterRow = TeamPage["roster"][number];
-
-const ROSTER_COLUMNS: Column<RosterRow>[] = [
-  {
-    key: "player",
-    label: "Player",
-    text: true,
-    sticky: true,
-    strong: true,
-    cell: (r) => (
-      <Link href={`/players/${r.player_id}`} className="hover:underline">
-        {r.player}
-      </Link>
-    ),
-  },
-  { key: "pos", label: "Pos", text: true, cell: (r) => r.position ?? "" },
-  { key: "age", label: "Age", cell: (r) => (r.age == null ? "" : Math.floor(r.age)) },
-  { key: "gp", label: "GP", title: "Games played", cell: (r) => r.gp },
-  { key: "min", label: "MIN", title: "Minutes", cell: (r) => perGame(r.min, r.gp) },
-  { key: "pts", label: "PTS", title: "Points", strong: true, cell: (r) => perGame(r.pts, r.gp) },
-  { key: "reb", label: "REB", title: "Rebounds", cell: (r) => perGame(r.reb, r.gp) },
-  { key: "ast", label: "AST", title: "Assists", cell: (r) => perGame(r.ast, r.gp) },
-  { key: "stl", label: "STL", title: "Steals", cell: (r) => perGame(r.stl, r.gp) },
-  { key: "blk", label: "BLK", title: "Blocks", cell: (r) => perGame(r.blk, r.gp) },
-  { key: "fg3", label: "3P%", title: "Three-point %", cell: (r) => pct(r.fg3_pct) },
-  { key: "ts", label: "TS%", title: "True shooting %", cell: (r) => pct(r.ts_pct) },
-  { key: "pm", label: "+/−", title: "Plus-minus per game", cell: (r) => signed(r.gp ? r.plus_minus / r.gp : null) },
-];
-
-type SeasonRow = TeamPage["seasons"][number];
-
-const SEASON_COLUMNS: Column<SeasonRow>[] = [
-  { key: "season", label: "Season", text: true, sticky: true, strong: true, cell: (r) => r.season },
-  { key: "type", label: "Type", text: true, cell: (r) => TYPE_SHORT[r.season_type] },
-  { key: "wl", label: "W–L", title: "Wins and losses", cell: (r) => `${r.wins}–${r.losses}` },
-  { key: "pts", label: "PTS", title: "Points per game", cell: (r) => num1(r.pts) },
-  { key: "opp", label: "OPP", title: "Opponent points per game", cell: (r) => num1(r.opp_pts) },
-  { key: "ortg", label: "ORTG", title: "Points scored per 100 possessions", cell: (r) => num1(r.off_rtg) },
-  { key: "drtg", label: "DRTG", title: "Points allowed per 100 possessions", cell: (r) => num1(r.def_rtg) },
-  { key: "net", label: "NET", title: "Net rating", strong: true, cell: (r) => signed(r.net_rtg) },
-  { key: "pace", label: "PACE", title: "Possessions per 48 minutes", cell: (r) => num1(r.pace) },
-  { key: "ts", label: "TS%", title: "True shooting %", cell: (r) => pct(r.ts_pct) },
-  { key: "3par", label: "3PAr", title: "Share of shots that were threes", cell: (r) => pct(r.fg3a_rate) },
-];

@@ -25,6 +25,10 @@ select
     end                                                             as shot_zone,
     regexp_replace(shot_zone_area, '\s*\(.*\)$', '')                as shot_area,
     cast(shot_distance as integer)                                  as shot_distance,
+    -- where on the floor, in tenths of a foot from the hoop: x across (−250 to 250; negative
+    -- is what NBA.com calls the left side), y toward half court (baseline −47.5, half court 422.5)
+    try_cast(loc_x as integer)                                      as loc_x,
+    try_cast(loc_y as integer)                                      as loc_y,
     cast(shot_made_flag as integer)                                 as made,
     strptime(game_date, '%Y%m%d')::date                             as game_date
 from {{ source('raw', 'raw_shots__shot_chart_detail') }}

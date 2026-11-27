@@ -1,5 +1,6 @@
 // Typed calls to the FastAPI service (proxied at /api by next.config.ts).
 import type { Mode } from "./spec";
+import type { CourtResult } from "./court";
 import type { QuerySpec } from "./specOps";
 
 export type FieldMeta = {
@@ -99,6 +100,12 @@ export const api = {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ formula, dataset }),
+    }),
+  court: (spec: QuerySpec) =>
+    request<CourtResult>("/court", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(spec),
     }),
   query: (spec: QuerySpec) =>
     request<QueryResult>("/query", {

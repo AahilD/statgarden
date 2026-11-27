@@ -3,16 +3,15 @@ import { cacheLife } from "next/cache";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { Dot, Heading, StatTable, TitleCard, type Column } from "@/components/pages/Parts";
+import { BoxScore } from "@/components/pages/BoxScore";
+import { Dot, Heading, TitleCard } from "@/components/pages/Parts";
 import {
   apiGet,
   easternTime,
   num1,
   pct,
   shortDate,
-  signed,
   type GamePage,
-  type GamePlayer,
   type GameTeam,
 } from "@/lib/pages";
 
@@ -94,18 +93,7 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
       {[away, home].map((t) => (
         <section key={t.team_id} className="mt-12">
           <Heading>{t.name ?? t.abbr}</Heading>
-          <StatTable
-            caption={`${t.name ?? t.abbr} box score`}
-            columns={BOX_COLUMNS}
-            rows={t.players}
-            rowKey={(p) => String(p.player_id)}
-            rowClass={(p) => [p.min === 0 ? "text-ink-2" : "", isFirstBench(t, p) ? "border-t border-line-strong" : ""].join(" ")}
-            foot={[totalsRow(t)]}
-          />
-          <p className="mt-2 font-mono text-[11px] text-ink-2">
-            Starters first, then the bench by minutes.
-            {t.inactive.length > 0 && ` Inactive: ${t.inactive.join(", ")}.`}
-          </p>
+          <BoxScore team={t} />
         </section>
       ))}
 
@@ -213,55 +201,3 @@ function Compare({ away, home }: { away: GameTeam; home: GameTeam }) {
     </div>
   );
 }
-
-const isFirstBench = (t: GameTeam, p: GamePlayer) => !p.is_starter && t.players.find((x) => !x.is_starter) === p;
-
-type BoxRow = GamePlayer & { total?: boolean };
-
-/** The team line under each box score. */
-const totalsRow = (t: GameTeam): BoxRow => ({
-  ...t,
-  player_id: -1,
-  player: "Team",
-  is_starter: false,
-  pos: null,
-  min: 0,
-  plus_minus: null,
-  total: true,
-});
-
-const dnp = (p: BoxRow) => p.min === 0 && !p.total;
-
-const BOX_COLUMNS: Column<BoxRow>[] = [
-  {
-    key: "player",
-    label: "Player",
-    text: true,
-    sticky: true,
-    strong: true,
-    cell: (p) =>
-      p.total ? (
-        "Team"
-      ) : (
-        <>
-          <Link href={`/players/${p.player_id}`} className="hover:underline">
-            {p.player}
-          </Link>
-          {p.pos && <span className="ml-1.5 font-mono text-[10px] text-ink-2">{p.pos}</span>}
-        </>
-      ),
-  },
-  { key: "min", label: "MIN", title: "Minutes", cell: (p) => (p.total ? "" : dnp(p) ? "DNP" : p.min) },
-  { key: "pts", label: "PTS", title: "Points", strong: true, cell: (p) => (dnp(p) ? "" : p.pts) },
-  { key: "reb", label: "REB", title: "Rebounds", cell: (p) => (dnp(p) ? "" : p.reb) },
-  { key: "ast", label: "AST", title: "Assists", cell: (p) => (dnp(p) ? "" : p.ast) },
-  { key: "stl", label: "STL", title: "Steals", cell: (p) => (dnp(p) ? "" : p.stl) },
-  { key: "blk", label: "BLK", title: "Blocks", cell: (p) => (dnp(p) ? "" : p.blk) },
-  { key: "tov", label: "TOV", title: "Turnovers", cell: (p) => (dnp(p) ? "" : p.tov) },
-  { key: "fg", label: "FG", title: "Field goals made-attempted", cell: (p) => (dnp(p) ? "" : made(p.fgm, p.fga)) },
-  { key: "fg3", label: "3P", title: "Threes made-attempted", cell: (p) => (dnp(p) ? "" : made(p.fg3m, p.fg3a)) },
-  { key: "ft", label: "FT", title: "Free throws made-attempted", cell: (p) => (dnp(p) ? "" : made(p.ftm, p.fta)) },
-  { key: "oreb", label: "OREB", title: "Offensive rebounds", cell: (p) => (dnp(p) ? "" : p.oreb) },
-  { key: "pf", label: "PF", title: "Personal fouls", cell: (p) => (dnp(p) ? "" : p.pf) },
-  { key: "pm", label: "+/−", title: "Plus-minus", cell: (p) => (dnp(p) || p.plus_minus == null ? "" : signed(p.plus_minus, 0)) },
-];

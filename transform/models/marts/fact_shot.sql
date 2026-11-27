@@ -30,6 +30,8 @@ select
     s.shot_area,
     s.shot_distance,
     s.shot_distance                                         as shot_distance_sum,
+    s.loc_x,
+    s.loc_y,
     1                                                       as charted_fga,
     1                                                       as fga,
     s.made                                                  as fgm,

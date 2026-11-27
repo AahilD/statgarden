@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { usePopover } from "@/lib/usePopover";
 import { ShadeControls } from "@/components/table/ShadeBar";
 import { Chart, currentTheme, pageFont } from "@/components/chart/Chart";
+import { CourtPanel } from "@/components/chart/CourtPanel";
 import type { FieldMeta, QueryResult } from "@/lib/api";
 import { betterFor } from "@/lib/shade";
 import { autoAxes, binNumber, buildChartModel, suggestKind, type ChartKind, type ChartModel, type Stack } from "@/lib/chartModel";
@@ -32,6 +33,7 @@ const KIND_LABEL: Record<ChartKind, string> = {
   histogram: "Histogram",
 };
 const TYPES: ChartSpec["type"][] = ["auto", "bar", "line", "scatter", "heatmap", "histogram"];
+const SHOT_DATASET = "shots"; // the only dataset with spots on the floor, so the only one with a court
 
 const STACKS: { id: Stack; label: string }[] = [
   { id: "none", label: "Side by side" },
@@ -226,7 +228,14 @@ export function ChartPanel(p: {
   fields: Map<string, FieldMeta>;
   error?: string;
 }) {
-  const c = p.spec.chart;
+  const shots = p.spec.dataset === SHOT_DATASET;
+  const court = shots && p.spec.chart.type === "court";
+  // a court picked on the shot data, then another dataset: draw as Auto there
+  const c = useMemo<ChartSpec>(
+    () => (p.spec.chart.type === "court" && !court ? { ...p.spec.chart, type: "auto" } : p.spec.chart),
+    [p.spec.chart, court],
+  );
+  const types: ChartSpec["type"][] = shots ? [...TYPES, "court"] : TYPES;
   const [saving, setSaving] = useState(false);
   const noValues = p.spec.values.length === 0;
   const teamNames = useTeamNames();
@@ -291,15 +300,22 @@ export function ChartPanel(p: {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2.5">
         <span className="title-caps text-[13px]">Chart</span>
         <div className="flex flex-wrap items-center gap-1.5">
-          {TYPES.map((t) => {
+          {types.map((t) => {
             const on = c.type === t;
-            const label = t === "auto" ? (suggested ? `Auto · ${KIND_LABEL[suggested]}` : "Auto") : KIND_LABEL[t];
+            const label =
+              t === "auto" ? (suggested ? `Auto · ${KIND_LABEL[suggested]}` : "Auto") : t === "court" ? "Court" : KIND_LABEL[t];
             return (
               <button
                 key={t}
                 type="button"
                 aria-pressed={on}
-                title={t === "auto" ? "Picks a chart that fits your fields" : undefined}
+                title={
+                  t === "auto"
+                    ? "Picks a chart that fits your fields"
+                    : t === "court"
+                      ? "Shots on a half court, against the league from the same spots"
+                      : undefined
+                }
                 onClick={() => p.setSpec((s) => ({ ...s, chart: { ...s.chart, type: t } }))}
                 className={`rounded-full px-3 py-0.5 font-mono text-xs ${
                   on ? TONE.orange.block : "border border-line text-ink-2 hover:border-line-strong hover:text-ink"
@@ -311,6 +327,11 @@ export function ChartPanel(p: {
           })}
         </div>
       </div>
+      {court ? (
+        <div className="p-4">
+          <CourtPanel spec={p.spec} fields={p.fields} title={courtTitle(p.spec, p.fields)} subtitle={subtitle} />
+        </div>
+      ) : (
       <div className="flex flex-col gap-4 p-4">
         {/* phones see the chart first; the X / Y / Colour menus sit under it */}
         {result && model && model.kind !== "empty" && (
@@ -386,6 +407,7 @@ export function ChartPanel(p: {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -646,4 +668,10 @@ function PointNames(p: { model: Extract<ChartModel, { kind: "scatter" }>; chart:
       </div>
     </div>
   );
+}
+
+/** "Shot map", or "Shot map by player" when the courts are split by a Rows field. */
+function courtTitle(spec: PivotSpec, fields: Map<string, FieldMeta>) {
+  const by = spec.rows[0] ? fields.get(spec.rows[0])?.label : undefined;
+  return by ? `Shot map by ${by.toLowerCase()}` : "Shot map";
 }

@@ -1,8 +1,10 @@
 // Building blocks shared by the player, team and glossary pages: the title card, stat tiles,
-// section headings and a plain stats table. All server-rendered.
+// section headings; the stats table (StatTable) is a client component of its own.
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { TONE, type Tone } from "@/lib/tones";
+
+export { Pills, StatTable, type Column } from "./StatTable";
 
 /** Centred, framed twice: the same title card as the home page, for one player or team. */
 export function TitleCard(p: { eyebrow?: ReactNode; title: string; sub?: ReactNode; children?: ReactNode }) {
@@ -25,16 +27,40 @@ export function TitleCard(p: { eyebrow?: ReactNode; title: string; sub?: ReactNo
 /** A dot between items in a line of facts. */
 export const Dot = () => <span aria-hidden className="text-line-strong">·</span>;
 
-/** HUD-style number tile: label, big number, one line of context. */
-export function Tile(p: { label: string; value: string; note?: ReactNode; tone: Tone }) {
+/** HUD-style number tile: label, big number, one line of context. `compact` fits five or six in a row. */
+export function Tile(p: { label: string; short?: string; value: string; note?: ReactNode; tone: Tone; compact?: boolean }) {
   return (
     <div className="overflow-hidden rounded-card border border-line bg-surface">
       <div className={`h-1.5 ${TONE[p.tone].block}`} />
-      <div className="px-4 pb-3.5 pt-3">
-        <div className="label-mono">{p.label}</div>
-        <div className="title-caps mt-1 text-[clamp(1.6rem,5vw,2.25rem)] leading-none tracking-[0.04em]">{p.value}</div>
+      <div className={p.compact ? "px-3 pb-3 pt-2.5" : "px-4 pb-3.5 pt-3"}>
+        <div className="label-mono">
+          {p.short ? (
+            <>
+              <span className="sm:hidden">{p.short}</span>
+              <span className="hidden sm:inline">{p.label}</span>
+            </>
+          ) : (
+            p.label
+          )}
+        </div>
+        <div
+          className={`title-caps mt-1 leading-none tracking-[0.04em] ${
+            p.compact ? "text-[clamp(1.35rem,4vw,1.9rem)]" : "text-[clamp(1.6rem,5vw,2.25rem)]"
+          }`}
+        >
+          {p.value}
+        </div>
         {p.note && <div className="mt-2 truncate font-mono text-[11px] text-ink-2">{p.note}</div>}
       </div>
+    </div>
+  );
+}
+
+/** Tiles in a row: five or six across on wider screens; on phones three per line, centred. */
+export function TileRow({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-wrap justify-center gap-2 sm:grid sm:auto-cols-fr sm:grid-flow-col sm:gap-3 [&>*]:w-[calc((100%-1rem)/3)] sm:[&>*]:w-auto">
+      {children}
     </div>
   );
 }
@@ -47,79 +73,6 @@ export function Heading({ children, id, aside }: { children: ReactNode; id?: str
       <h2 className="title-caps text-lg">{children}</h2>
       <span className="h-px flex-1 bg-line-strong" />
       {aside}
-    </div>
-  );
-}
-
-export type Column<R> = {
-  key: string;
-  label: string;
-  title?: string; // what the short label means
-  cell: (r: R) => ReactNode;
-  text?: boolean; // left-aligned text column (numbers are right-aligned)
-  sticky?: boolean; // stays put when the table scrolls sideways (first column)
-  strong?: boolean;
-};
-
-/** A plain stats table: scrolls sideways on phones with the first column pinned. */
-export function StatTable<R>(p: {
-  columns: Column<R>[];
-  rows: R[];
-  rowKey: (r: R) => string;
-  rowClass?: (r: R) => string;
-  foot?: R[];
-  caption?: string;
-}) {
-  const cellCls = (c: Column<R>, head = false) =>
-    [
-      "whitespace-nowrap px-3 py-2",
-      c.text ? "text-left" : "text-right font-mono tabular-nums",
-      c.sticky ? "sticky left-0 z-[1] bg-surface" : "",
-      c.strong && !head ? "font-medium text-ink" : "",
-    ].join(" ");
-  return (
-    <div className="overflow-x-auto rounded-card border border-line bg-surface">
-      <table className="w-full border-collapse text-[13px]">
-        {p.caption && <caption className="sr-only">{p.caption}</caption>}
-        <thead>
-          <tr className="border-b border-line-strong">
-            {p.columns.map((c) => (
-              <th
-                key={c.key}
-                scope="col"
-                title={c.title}
-                className={`${cellCls(c, true)} font-mono text-[11px] font-normal uppercase tracking-wide text-ink-2`}
-              >
-                {c.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {p.rows.map((r) => (
-            <tr key={p.rowKey(r)} className={`border-b border-line last:border-0 ${p.rowClass?.(r) ?? ""}`}>
-              {p.columns.map((c) => (
-                <td key={c.key} className={cellCls(c)}>
-                  {c.cell(r)}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-        {p.foot && p.foot.length > 0 && (
-          <tfoot>
-            {p.foot.map((r) => (
-              <tr key={p.rowKey(r)} className="border-t border-line-strong">
-                {p.columns.map((c) => (
-                  <td key={c.key} className={`${cellCls(c)} font-medium text-ink`}>
-                    {c.cell(r)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tfoot>
-        )}
-      </table>
     </div>
   );
 }

@@ -143,7 +143,7 @@ fields:
     description: Round drafted in, or Undrafted.
 
   - id: is_starter
-    label: Starter / bench
+    label: Starter / Bench
     short: Role
     group: Player
     kind: dimension
@@ -257,7 +257,7 @@ fields:
     description: Day of the week the game was played.
 
   - id: all_star_split
-    label: Before / after All-Star break
+    label: Before / After All-Star break
     short: ASB
     group: Game
     kind: dimension
@@ -285,7 +285,7 @@ fields:
 
   # ── Context ───────────────────────────────────────────────────────────────
   - id: venue
-    label: Home / away
+    label: Home / Away
     short: H/A
     group: Context
     kind: dimension
@@ -296,7 +296,7 @@ fields:
     description: From the matchup text ('vs.' = home, '@' = away).
 
   - id: result
-    label: Win / loss
+    label: Win / Loss
     short: W/L
     group: Context
     kind: dimension
@@ -558,7 +558,7 @@ fields:
   - { id: height_bucket, label: Height, short: Ht, group: Player, kind: dimension, type: bucket, bins: ["Under 6'3", "6'3-6'6", "6'7-6'9", "6'10+"], expr: "CASE WHEN height_in IS NULL THEN NULL WHEN height_in < 75 THEN 'Under 6''3' WHEN height_in < 79 THEN '6''3-6''6' WHEN height_in < 82 THEN '6''7-6''9' ELSE '6''10+' END", source: bio, description: Listed height that season. }
   - { id: draft_pick, label: Draft pick, short: Pick, group: Player, kind: dimension, type: bucket, bins: [Top 3, "4-10", "11-30", 2nd round, Undrafted], expr: "CASE WHEN draft_number IS NULL OR draft_round IS NULL THEN 'Undrafted' WHEN draft_round = 2 THEN '2nd round' WHEN draft_number <= 3 THEN 'Top 3' WHEN draft_number <= 10 THEN '4-10' ELSE '11-30' END", datasets: [player_game, player_season], source: bio, description: Where the player was picked. }
   - { id: draft_year, label: Draft class, short: Draft, group: Player, kind: dimension, type: text, expr: "coalesce(cast(draft_year AS VARCHAR), 'Undrafted')", datasets: [player_game, player_season], source: bio, description: Year the player was drafted. }
-  - { id: from_usa, label: USA / international, short: Origin, group: Player, kind: dimension, type: bucket, bins: [USA, International], expr: "CASE WHEN country IS NULL THEN NULL WHEN country = 'USA' THEN 'USA' ELSE 'International' END", datasets: [player_game, player_season], source: bio, description: Whether the player is from the USA. }
+  - { id: from_usa, label: USA / International, short: Origin, group: Player, kind: dimension, type: bucket, bins: [USA, International], expr: "CASE WHEN country IS NULL THEN NULL WHEN country = 'USA' THEN 'USA' ELSE 'International' END", datasets: [player_game, player_season], source: bio, description: Whether the player is from the USA. }
   - { id: country, label: Country, short: Country, group: Player, kind: dimension, type: text, expr: country, datasets: [player_game, player_season], source: bio, description: Country the player is from. }
   - { id: college, label: College, short: College, group: Player, kind: dimension, type: text, expr: college, datasets: [player_game, player_season], source: bio, description: Last school or club before the NBA. }
 
@@ -569,7 +569,7 @@ fields:
   - { id: shot_kind, label: Shot type, short: Type, group: Shot, kind: dimension, type: bucket, bins: [Dunk, Layup, Tip / putback, Hook, Floater, Jump shot], expr: shot_kind, datasets: [shots], source: shots, description: Dunk, layup, jumper and so on (grouped from NBA.com's action type). }
   - { id: action_type, label: Shot (detailed), short: Action, group: Shot, kind: dimension, type: text, expr: action_type, datasets: [shots], source: shots, description: NBA.com's detailed shot description, e.g. Pullup Jump Shot. }
   - { id: shot_value, label: 2 or 3, short: 2/3, group: Shot, kind: dimension, type: bucket, bins: [2PT, 3PT], expr: "CASE WHEN fg3a = 1 THEN '3PT' ELSE '2PT' END", datasets: [shots], source: shots, description: Two-pointer or three-pointer. }
-  - { id: shot_result, label: Made / missed, short: Result, group: Shot, kind: dimension, type: bucket, bins: [Made, Missed], expr: "CASE WHEN fgm = 1 THEN 'Made' ELSE 'Missed' END", datasets: [shots], source: shots, description: Whether the shot went in. }
+  - { id: shot_result, label: Made / Missed, short: Result, group: Shot, kind: dimension, type: bucket, bins: [Made, Missed], expr: "CASE WHEN fgm = 1 THEN 'Made' ELSE 'Missed' END", datasets: [shots], source: shots, description: Whether the shot went in. }
   - { id: period, label: Quarter, short: Qtr, group: Shot, kind: dimension, type: bucket, bins: [Q1, Q2, Q3, Q4, OT], expr: "CASE WHEN period <= 4 THEN 'Q' || period ELSE 'OT' END", datasets: [shots], source: shots, description: Quarter the shot was taken in. }
   - { id: clock_bucket, label: Time left in quarter, short: Clock, group: Shot, kind: dimension, type: bucket, bins: ["9-12 min", "6-9 min", "3-6 min", "1-3 min", "Last minute"], expr: "CASE WHEN clock_seconds > 540 THEN '9-12 min' WHEN clock_seconds > 360 THEN '6-9 min' WHEN clock_seconds > 180 THEN '3-6 min' WHEN clock_seconds > 60 THEN '1-3 min' ELSE 'Last minute' END", datasets: [shots], source: shots, description: Game clock when the shot went up. }
 
@@ -806,7 +806,7 @@ fields:
     description: "How the possession ended: spot up, isolation, pick & roll and so on (Synergy)."
 
   - id: side
-    label: "Offense / defense"
+    label: "Offense / Defense"
     short: "Side"
     group: "Play type"
     kind: dimension

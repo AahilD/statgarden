@@ -48,6 +48,17 @@ export function playerLinks(name: string, season: string): Link[] {
         chart: { view: "both", type: "bar" },
       }),
     },
+    {
+      label: `${season} shot map`,
+      tone: "red",
+      href: lab({
+        dataset: "shots",
+        filters: [who, inSeason(season), REG],
+        rows: ["player"],
+        values: [{ field: "fga" }, { field: "fg_pct" }, { field: "efg_pct" }],
+        chart: { view: "both", type: "court" },
+      }),
+    },
   ];
 }
 
@@ -87,6 +98,17 @@ export function teamLinks(abbr: string, season: string): Link[] {
         values: [{ field: "pts", mode: "per_game" }, { field: "net_rtg" }, { field: "pace" }],
         sort: BY_SEASON,
         chart: { view: "both", type: "line" },
+      }),
+    },
+    {
+      label: `${season} shot map`,
+      tone: "red",
+      href: lab({
+        dataset: "shots",
+        filters: [team, inSeason(season), REG],
+        rows: ["team"],
+        values: [{ field: "fga" }, { field: "fg_pct" }, { field: "efg_pct" }],
+        chart: { view: "both", type: "court" },
       }),
     },
   ];

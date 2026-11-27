@@ -128,7 +128,8 @@ export function suggestKind(res: QueryResult, chart: ChartSpec): ChartKind {
 }
 
 export function resolveKind(res: QueryResult, chart: ChartSpec): ChartKind {
-  return chart.type === "auto" ? suggestKind(res, chart) : chart.type;
+  // "court" never reaches here on the shot data (the court panel draws it); elsewhere it's Auto
+  return chart.type === "auto" || chart.type === "court" ? suggestKind(res, chart) : chart.type;
 }
 
 const ownDirection = (v: ResultValue): Direction =>

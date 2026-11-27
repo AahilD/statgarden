@@ -56,7 +56,8 @@ export const SpecSchema = z.object({
       // what's on screen: the table, the chart, or both
       view: z.enum(["table", "chart", "both"]).default("table"),
       // "auto" picks a type from the fields; anything unknown (old links said "table") falls back to it
-      type: z.enum(["auto", "bar", "line", "scatter", "heatmap", "histogram"]).catch("auto"),
+      // "court" is the shot map, for the Shot chart dataset only (elsewhere it draws as auto)
+      type: z.enum(["auto", "bar", "line", "scatter", "heatmap", "histogram", "court"]).catch("auto"),
       // bars with colours: side by side, stacked, or stacked to 100% of each bar
       stack: z.enum(["none", "stack", "pct"]).catch("none").default("none"),
       // histogram: how wide each bin is (in the number's own units; 0.02 = 2%). Empty = pick one
