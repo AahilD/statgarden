@@ -22,7 +22,7 @@ from nba_api.stats.static import teams as static_teams
 
 from ingest.client import PullError, call, read, save
 from ingest.paths import LOG_DIR, RAW_DIR
-from ingest.registry import PER_ORDER, Endpoint, Task, load_registry, once_tasks, season_tasks
+from ingest.registry import PER_ORDER, Endpoint, Task, kept_seasons, load_registry, once_tasks, season_tasks
 
 CURRENT_SEASON_MAX_AGE = timedelta(hours=12)  # season-level files for the live season go stale
 MAX_CONSECUTIVE_FAILS = 5  # in a row across all calls: probably throttled, so cool off
@@ -67,6 +67,13 @@ def games(seasons: list[str]) -> list[dict]:
     return sorted(out.values(), key=lambda g: (g["game_date"], g["game_id"]), reverse=True)
 
 
+def teams_in(season: str) -> list[int] | None:
+    """Teams in that season's game log (old seasons have defunct teams and miss newer ones). None if not pulled yet."""
+    files = list((RAW_DIR / "stats" / "game_log_team" / season).glob("*.json.gz"))
+    ids = {r["TEAM_ID"] for f in files for r in _result_rows(read(f))}
+    return sorted(ids) or None
+
+
 def players(seasons: list[str]) -> list[int]:
     ids: set[int] = set()
     for season in seasons:
@@ -79,7 +86,7 @@ def players(seasons: list[str]) -> list[int]:
 
 
 def build_tasks(eps: list[Endpoint], cfg: dict, args) -> list[Task]:
-    seasons = args.seasons or cfg["seasons"]
+    seasons = args.seasons or kept_seasons(cfg)
     tasks: list[Task] = []
     team_ids = [t["id"] for t in static_teams.get_teams()]
     by_per = {p: [e for e in eps if e.per == p] for p in PER_ORDER}
@@ -93,8 +100,8 @@ def build_tasks(eps: list[Endpoint], cfg: dict, args) -> list[Task]:
     for ep in by_per["team_season"]:
         tasks += [
             Task(ep, {**ep.params, "team_id": t, ep.season_param: s}, s, f"team_id={t}")
-            for s in seasons
-            for t in team_ids
+            for s in filter(ep.covers, seasons)
+            for t in (teams_in(s) or team_ids)
         ]
     if by_per["player"]:
         pids = players(seasons)
@@ -106,11 +113,20 @@ def build_tasks(eps: list[Endpoint], cfg: dict, args) -> list[Task]:
         if args.limit_games:
             game_list = game_list[: args.limit_games]
         for g in game_list:  # game-major, so a stopped run leaves whole games
-            for ep in by_per["game"]:
+            for ep in filter(lambda e: e.covers(g["season"]), by_per["game"]):
                 tasks.append(
                     Task(ep, {**ep.params, "game_id": g["game_id"]}, g["season"], f"game_id={g['game_id']}", meta=g)
                 )
     return tasks
+
+
+def _not_started(task: Task, today: date) -> bool:
+    """Play-In and Playoffs for the live season before April: the file on disk is empty and stays empty."""
+    st = task.params.get(task.ep.season_type_param) if task.ep.season_type_param else None
+    if st not in ("PlayIn", "Playoffs"):
+        return False
+    end_year = int(task.season[:4]) + 1
+    return today < date(end_year, 4, 1)
 
 
 def needs_pull(task: Task, current_season: str, refresh_days: int) -> bool:
@@ -118,7 +134,7 @@ def needs_pull(task: Task, current_season: str, refresh_days: int) -> bool:
         return True
     age = datetime.now(UTC) - datetime.fromtimestamp(task.path.stat().st_mtime, UTC)
     if task.ep.per in ("season", "team_season") and task.season == current_season:
-        return age > CURRENT_SEASON_MAX_AGE
+        return age > CURRENT_SEASON_MAX_AGE and not _not_started(task, date.today())
     if task.ep.per == "game" and refresh_days:
         recent = task.meta["game_date"] >= (date.today() - timedelta(days=refresh_days)).isoformat()
         return recent and age > timedelta(hours=12)
@@ -137,6 +153,7 @@ def main() -> None:
     ap.add_argument("--limit-games", type=int, default=0)
     ap.add_argument("--refresh-days", type=int, default=0, help="re-pull games from the last N days")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--max-minutes", type=float, default=0, help="stop cleanly after this long (wall clock)")
     args = ap.parse_args()
 
     cfg, eps = load_registry()
@@ -145,7 +162,7 @@ def main() -> None:
     eps = [e for e in eps if e.source == args.source and e.per in pers and (not only or e.name in only)]
 
     tasks = build_tasks(eps, cfg, args)
-    current = (args.seasons or cfg["seasons"])[-1]
+    current = cfg["current_season"]  # not the last of --seasons: a backfill season isn't live
     todo = [t for t in tasks if needs_pull(t, current, args.refresh_days)]
     print(f"{args.source}: {len(tasks):,} calls in total, {len(todo):,} to pull", flush=True)
     for name, n in sorted(Counter(t.ep.name for t in todo).items()):
@@ -164,8 +181,11 @@ def main() -> None:
     done = failed = 0
     t0 = time.monotonic()
 
+    # wall clock, not monotonic: a Mac that slept through the deadline should stop when it wakes
+    deadline = time.time() + args.max_minutes * 60 if args.max_minutes else None
+
     def stopping() -> bool:
-        return _stop_requested or STOP_FILE.exists()
+        return _stop_requested or STOP_FILE.exists() or (deadline is not None and time.time() > deadline)
 
     for i, task in enumerate(todo, 1):
         if stopping():

@@ -1,4 +1,4 @@
-.PHONY: pull-stats pull-cdn stop-pull resume-pull load sources build check recon docs publish-local api web test lint
+.PHONY: nightly coverage backfill pull-stats pull-cdn stop-pull resume-pull load sources build check recon docs publish-local api web test lint
 
 pull-stats:  ## everything from stats.nba.com (resumable; ~7h the first time)
 	uv run python -m ingest.pull --source stats --per once,season,team,team_season
@@ -30,6 +30,15 @@ stop-pull:   ## ask running pulls to stop cleanly (they finish the current call)
 
 resume-pull: ## clear the stop flag; then run pull-stats / pull-cdn again
 	rm -f data/STOP_PULL
+
+nightly:     ## pull new games (both sources), build, check, publish; logs in data/logs/nightly_*
+	uv run python -m ingest.nightly
+
+coverage:    ## which stats.nba.com endpoints have data for which seasons (writes data/coverage.json)
+	uv run python -m ingest.coverage
+
+backfill:    ## pull older seasons for HOURS hours (default 4); the nightly run does this too
+	uv run python -m ingest.backfill --hours $(or $(HOURS),4)
 
 publish-local: ## copy the working DB to data/serve/ for the API (atomic swap)
 	mkdir -p data/serve

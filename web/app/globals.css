@@ -128,9 +128,12 @@ body {
   color: var(--text-2);
 }
 
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+/* in the base layer, so a component can swap it for its own focus style (e.g. focus-within on a wrapper) */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {

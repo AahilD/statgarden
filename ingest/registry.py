@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -10,9 +11,12 @@ from typing import Any
 
 import yaml
 
-from ingest.paths import RAW_DIR
+from ingest.paths import DATA, RAW_DIR
 
 REGISTRY = Path(__file__).resolve().parent / "endpoints.yaml"
+# seasons whose pull is finished (written by the backfill). Only these and the current season are
+# loaded and served, so a half-pulled old season never shows up on the site.
+COMPLETE = DATA / "complete_seasons.json"
 PER_ORDER = ["once", "season", "team", "team_season", "player", "game"]
 
 
@@ -27,7 +31,11 @@ class Endpoint:
     season_types: list[str] | None = None
     season_param: str = "season"
     season_type_param: str | None = "season_type_all_star"
+    since: str | None = None  # oldest season with data (from the coverage map); older seasons aren't pulled
     note: str = ""
+
+    def covers(self, season: str) -> bool:
+        return self.since is None or season >= self.since
 
 
 @dataclass
@@ -46,6 +54,33 @@ class Task:
 def load_registry() -> tuple[dict[str, Any], list[Endpoint]]:
     doc = yaml.safe_load(REGISTRY.read_text())
     return doc, [Endpoint(**e) for e in doc["endpoints"]]
+
+
+def season_label(start: int) -> str:
+    return f"{start}-{str(start + 1)[-2:]}"
+
+
+def all_seasons(cfg: dict[str, Any]) -> list[str]:
+    """Every season the backfill aims for, oldest first: oldest_season up to current_season."""
+    first, last = int(cfg["oldest_season"][:4]), int(cfg["current_season"][:4])
+    return [season_label(y) for y in range(first, last + 1)]
+
+
+def complete_seasons() -> list[str]:
+    return json.loads(COMPLETE.read_text()) if COMPLETE.exists() else []
+
+
+def mark_complete(season: str) -> None:
+    COMPLETE.write_text(json.dumps(sorted({*complete_seasons(), season})))
+
+
+def unmark_complete(season: str) -> None:
+    COMPLETE.write_text(json.dumps(sorted(set(complete_seasons()) - {season})))
+
+
+def kept_seasons(cfg: dict[str, Any]) -> list[str]:
+    """Seasons that are loaded, served and kept fresh: the finished ones plus the live one, oldest first."""
+    return sorted({*complete_seasons(), cfg["current_season"]})
 
 
 def _slug(value: Any) -> str:
@@ -67,7 +102,7 @@ def _sweeps(ep: Endpoint) -> list[dict[str, Any]]:
 
 def season_tasks(ep: Endpoint, seasons: list[str], season_types: list[str]) -> list[Task]:
     tasks = []
-    for season in seasons:
+    for season in filter(ep.covers, seasons):
         for st in (ep.season_types or season_types) if ep.season_type_param else [None]:
             for sw in _sweeps(ep):
                 params = {**ep.params, **sw, ep.season_param: season}

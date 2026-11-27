@@ -43,18 +43,19 @@ def _endpoint_class(source: str, name: str):
     return getattr(module, name)
 
 
-def call(source: str, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
+def call(source: str, endpoint: str, params: dict[str, Any], tries: int = MAX_TRIES) -> dict[str, Any]:
     """Call one endpoint and return the raw JSON dict. Retries with backoff."""
     cls = _endpoint_class(source, endpoint)
     last_err: Exception | None = None
-    for attempt in range(MAX_TRIES):
+    for attempt in range(tries):
         _throttle(source)
         try:
             return cls(**params, timeout=TIMEOUT_S).get_dict()
         except Exception as err:  # timeouts, bad JSON, 4xx/5xx surfaced as parse errors
             last_err = err
-            time.sleep(2**attempt * 3)
-    raise PullError(f"{endpoint} {params} failed after {MAX_TRIES} tries: {last_err!r}") from last_err
+            if attempt < tries - 1:  # no point waiting after the last try
+                time.sleep(2**attempt * 3)
+    raise PullError(f"{endpoint} {params} failed after {tries} tries: {last_err!r}") from last_err
 
 
 def save(path: Path, source: str, endpoint: str, params: dict[str, Any], data: dict[str, Any]) -> None:

@@ -11,6 +11,15 @@ mkdir -p data/logs
 exec >>"$log" 2>&1
 echo "== $(date '+%F %T') daily cdn pull"
 
+# share the nightly job's lock: two runs at once would pull cdn twice and build the same DuckDB file together
+lock="data/NIGHTLY_LOCK"
+if [[ -f "$lock" ]] && kill -0 "$(cat "$lock")" 2>/dev/null; then
+  echo "== the nightly run is going; skipping (it pulls cdn too)"
+  exit 0
+fi
+echo $$ >"$lock"
+trap 'rm -f "$lock"' EXIT
+
 make pull-cdn
 saved=$(grep -o 'finished: [0-9,]* saved' "$log" | tail -1 | tr -dc '0-9')
 

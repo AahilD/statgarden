@@ -24,7 +24,7 @@ import pyarrow as pa
 
 from ingest.client import read
 from ingest.paths import DB_PATH, RAW_DIR
-from ingest.registry import load_registry
+from ingest.registry import kept_seasons, load_registry
 
 BATCH_FILES = 300
 SKIP_KEYS = {"meta", "parameters", "resource"}
@@ -208,7 +208,8 @@ def file_meta(path: Path, doc: dict) -> dict[str, Any]:
 
 
 def load(rebuild: bool = False, only: set[str] | None = None) -> None:
-    _, eps = load_registry()
+    cfg, eps = load_registry()
+    keep = {"_", *kept_seasons(cfg)}
     con = duckdb.connect(str(DB_PATH))
     if rebuild:
         for (t,) in con.execute(
@@ -223,7 +224,8 @@ def load(rebuild: bool = False, only: set[str] | None = None) -> None:
     for ep in eps:
         if only and ep.name not in only:
             continue
-        files = sorted((RAW_DIR / ep.source / ep.name).glob("*/*.json.gz"))
+        # only seasons that are finished (and "_", files not tied to a season); see registry.COMPLETE
+        files = sorted(f for f in (RAW_DIR / ep.source / ep.name).glob("*/*.json.gz") if f.parent.name in keep)
         _forget_missing(con, ep.source, ep.name, {str(f.relative_to(RAW_DIR)) for f in files}, loaded)
         todo = []
         for f in files:

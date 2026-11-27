@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi import Query as Q
 from pydantic import BaseModel
 
+from api import pages
 from api.catalog import load_catalog, mark_available, modes_in
 from api.db import Database
 from api.spec import PivotSpec
@@ -40,6 +41,8 @@ def _on_swap(con) -> None:
 
 
 db.on_swap.append(_on_swap)
+pages.db, pages.catalog = db, catalog
+app.include_router(pages.router)
 
 
 def _clean(v):
@@ -146,19 +149,21 @@ def search(q: str = Q(..., min_length=2), limit: int = Q(8, le=25)):
         FROM fact_player_game
         WHERE strip_accents(lower(player_name)) LIKE ?
         GROUP BY 1, 2
-        ORDER BY (strip_accents(lower(player_name)) LIKE ?) DESC, last_game DESC, minutes DESC
+        ORDER BY (strip_accents(lower(player_name)) LIKE ?) DESC, max(season) DESC, minutes DESC
         LIMIT ?""",
         [f"%{term}%", f"{term}%", limit],
     ).fetchall()
+    # teams by abbreviation, city or nickname ("den", "denver", "nuggets")
     teams = cur.execute(
         """
-        SELECT DISTINCT team_id, team_abbreviation FROM fact_player_game
-        WHERE lower(team_abbreviation) LIKE ? LIMIT 5""",
-        [f"{term}%"],
+        SELECT team_id, team_abbreviation, team_name FROM dim_team
+        WHERE lower(team_abbreviation) = ? OR strip_accents(lower(team_name)) LIKE ?
+        ORDER BY lower(team_abbreviation) = ? DESC, team_name LIMIT 5""",
+        [term, f"%{term}%", term],
     ).fetchall()
     return {
         "players": [{"id": p[0], "name": p[1], "team": p[2], "last_game": str(p[3])} for p in players],
-        "teams": [{"id": t[0], "abbreviation": t[1]} for t in teams],
+        "teams": [{"id": t[0], "abbreviation": t[1], "name": t[2]} for t in teams],
     }
 
 

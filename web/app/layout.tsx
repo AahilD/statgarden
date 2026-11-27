@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { Jost, Roboto, JetBrains_Mono } from "next/font/google";
 import { Providers } from "./providers";
-import { Nav } from "@/components/layout/Nav";
+import { Nav, NavLinks } from "@/components/layout/Nav";
+import { Search } from "@/components/layout/Search";
 import { Mark, Stripes, Wordmark } from "@/components/layout/Brand";
 import "./globals.css";
 
@@ -38,11 +40,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <header className="sticky top-0 z-40 border-b border-line bg-[color-mix(in_srgb,var(--bg)_85%,transparent)] backdrop-blur-md">
             <Stripes />
             <div className="mx-auto flex h-14 max-w-[1600px] items-center justify-between px-4">
-              <Link href="/" className="flex items-center gap-2.5 text-[15px]" aria-label="StatGarden home">
+              <Link href="/" className="flex shrink-0 items-center gap-2.5 text-[15px]" aria-label="StatGarden home">
                 <Mark />
                 <Wordmark />
               </Link>
-              <Nav />
+              <div className="flex items-center gap-1 sm:gap-3">
+                <Search />
+                {/* the nav reads the URL, which only exists per request; until then it shows without a current link */}
+                <Suspense fallback={<NavLinks path={null} />}>
+                  <Nav />
+                </Suspense>
+              </div>
             </div>
           </header>
           <main className="flex-1">{children}</main>
@@ -52,6 +60,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 <Mark size={14} />
                 <Wordmark />
               </span>
+              <nav aria-label="Footer" className="flex gap-4 text-sm text-ink-2">
+                <Link href="/lab" className="hover:text-ink">Lab</Link>
+                <Link href="/teams" className="hover:text-ink">Teams</Link>
+                <Link href="/glossary" className="hover:text-ink">Glossary</Link>
+              </nav>
               <span className="label-mono">Data: NBA.com via nba_api · not affiliated with the NBA</span>
             </div>
             <Stripes />
