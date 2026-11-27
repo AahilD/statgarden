@@ -104,11 +104,12 @@ export function isComplete(f: Filter): boolean {
   return f.value !== null && f.value !== undefined && f.value !== "";
 }
 
-/** What the API needs: no chart settings (they don't change the numbers) and no half-made filters. */
-export type QuerySpec = Omit<PivotSpec, "chart">;
+/** What the API needs: no chart or shading settings (they don't change the numbers) and no half-made filters. */
+export type QuerySpec = Omit<PivotSpec, "chart" | "shade">;
 
 export function forQuery(spec: PivotSpec): QuerySpec {
-  const { v, dataset, rows, columns, values, calcs, sort, limit } = spec;
+  const { v, dataset, rows, columns, calcs, sort, limit } = spec;
+  const values = spec.values.map(({ field, mode }) => ({ field, mode }));
   return { v, dataset, filters: spec.filters.filter(isComplete), rows, columns, values, calcs, sort, limit };
 }
 

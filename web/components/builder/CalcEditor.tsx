@@ -192,6 +192,9 @@ export function CalcEditor(p: {
           <option value="lower">Lower is better</option>
           <option value="none">No shading</option>
         </select>
+        <span className="mt-1 block text-[11px] text-ink-2">
+          The default. Any view can change it, and how cells are compared, above the table.
+        </span>
       </label>
 
       <div className="mt-4 flex items-center gap-2">

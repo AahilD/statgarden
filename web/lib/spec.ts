@@ -5,6 +5,7 @@ import { z } from "zod";
 const OPS = ["=", "!=", ">", ">=", "<", "<=", "in", "not_in", "between", "contains"] as const;
 const MODES = ["total", "per_game", "per_36", "per_100"] as const;
 export const CALC_FORMATS = ["number", "precise", "percent", "whole"] as const;
+export const SHADE_MODES = ["rank", "average", "split", "baseline", "off"] as const;
 
 const FilterSchema = z.object({
   field: z.string(),
@@ -28,6 +29,8 @@ const CalcSchema = z.object({
 const ValueSchema = z.object({
   field: z.string(),
   mode: z.enum(MODES).optional(),
+  // which way is better for shading in this view; left out = the stat's own default
+  better: z.enum(["higher", "lower", "none"]).optional().catch(undefined),
 });
 
 export const SpecSchema = z.object({
@@ -40,6 +43,8 @@ export const SpecSchema = z.object({
   calcs: z.array(CalcSchema).max(8).default([]),
   sort: z.array(z.object({ by: z.string(), dir: z.enum(["asc", "desc"]) })).max(3).default([]),
   limit: z.number().int().min(1).max(5000).default(100),
+  // how the table is shaded (see lib/shade.ts)
+  shade: z.enum(SHADE_MODES).catch("rank").default("rank"),
   chart: z
     .object({
       // what's on screen: the table, the chart, or both
@@ -58,6 +63,7 @@ export type Filter = z.infer<typeof FilterSchema>;
 export type Calc = z.infer<typeof CalcSchema>;
 export type CalcFormat = Calc["format"];
 export type Mode = (typeof MODES)[number];
+export type ShadeMode = (typeof SHADE_MODES)[number];
 
 export const LIMITS = { rows: 3, columns: 2, values: 6, calcs: 8 } as const;
 

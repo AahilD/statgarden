@@ -369,3 +369,13 @@ def test_seasons_endpoint_for_season_datasets():
     for ds in ["player_season", "lineups", "play_types", "matchups"]:
         r = client.get(f"/meta/seasons?dataset={ds}")
         assert r.status_code == 200 and r.json(), ds
+
+
+def test_shading_choices_round_trip_and_dont_change_the_query():
+    base = {"filters": REG_2526, "rows": ["player"], "values": [{"field": "pts", "mode": "per_game"}], "limit": 5}
+    shaded = {**base, "shade": "split", "values": [{"field": "pts", "mode": "per_game", "better": "lower"}]}
+    a, b = q(**base), q(**shaded)
+    assert a["rows"] == b["rows"]
+    spec = PivotSpec(**shaded)
+    assert spec.shade == "split" and spec.values[0].better == "lower"
+    assert PivotSpec(shade="sideways").shade == "rank"

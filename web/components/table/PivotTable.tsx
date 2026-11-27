@@ -1,11 +1,14 @@
 "use client";
 
 import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
-import { useMemo, useState } from "react";
-import type { QueryResult } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { HeaderTip, type OpenTip, type Tip } from "@/components/table/HeaderTip";
+import { ShadeBar } from "@/components/table/ShadeBar";
+import type { FieldMeta, QueryResult } from "@/lib/api";
 import { formatValue } from "@/lib/format";
 import type { Wide, WideRow } from "@/lib/pivot";
 import type { PivotSpec } from "@/lib/spec";
+import { computeShades, shadeBackground } from "@/lib/shade";
 import { setSort } from "@/lib/specOps";
 import { SERIES, TONE } from "@/lib/tones";
 
@@ -17,52 +20,56 @@ export function PivotTable(p: {
   wide: Wide;
   spec: PivotSpec;
   setSpec: (fn: (s: PivotSpec) => PivotSpec) => void;
+  /** field id → its catalog entry (calculated stats included), for the header tooltips */
+  fields?: Map<string, FieldMeta>;
 }) {
   const { wide } = p;
-  const [shadeOn, setShadeOn] = useState(true);
-
-  // Green for better than the rest of the table, red for worse (by rank within the column).
-  // Only for stats where higher or lower is clearly better, and only with enough rows to compare.
-  const shades = useMemo(() => {
-    const out = new Map<string, Map<number, number>>(); // column id → row index → -1..1
-    const groupIds = p.result.column_fields.length ? wide.groups.map((g) => g.id) : ["all"];
+  const hasSplit = p.result.column_fields.length > 0 && wide.groups.length > 1;
+  const shades = useMemo(() => computeShades(p.result, wide, p.spec), [p.result, wide, p.spec]);
+  const shadeStyle = (colId: string, rowIndex: number): React.CSSProperties | undefined => {
+    const bg = shadeBackground(shades.get(colId)?.get(rowIndex), p.spec.shade);
+    return bg ? { background: bg } : undefined;
+  };
+  // what each header's tooltip says, by column id
+  const tips = useMemo(() => {
+    const out = new Map<string, Tip>();
+    for (const f of p.result.row_fields) out.set(`dim:${f.id}`, { title: f.label, about: p.fields?.get(f.id)?.description });
+    const groups = p.result.column_fields.length ? wide.groups.map((g) => g.id) : ["all"];
     for (const v of p.result.values) {
-      if (v.higher_is_better === null) continue;
-      for (const g of groupIds) {
-        const id = `${g}|${v.key}`;
-        const vals = wide.rows
-          .map((r, i) => [i, r.cells[id]] as const)
-          .filter((x): x is readonly [number, number] => typeof x[1] === "number");
-        if (vals.length < 5) continue;
-        const sorted = [...vals].sort((a, b) => a[1] - b[1]);
-        const m = new Map<number, number>();
-        sorted.forEach(([i], rank) => {
-          const pct = rank / (sorted.length - 1); // 0 = lowest
-          m.set(i, (v.higher_is_better ? pct : 1 - pct) * 2 - 1);
-        });
-        out.set(id, m);
-      }
+      const meta = p.fields?.get(v.field);
+      const tip = { title: v.label, about: meta?.source === "calc" ? `Formula: ${meta.description}` : meta?.description };
+      for (const g of groups) out.set(`${g}|${v.key}`, tip);
     }
     return out;
-  }, [wide, p.result]);
-  const shadeStyle = (colId: string, rowIndex: number): React.CSSProperties | undefined => {
-    const t = shadeOn ? shades.get(colId)?.get(rowIndex) : undefined;
-    if (t === undefined || Math.abs(t) < 0.2) return undefined;
-    const pct = Math.round(((Math.abs(t) - 0.2) / 0.8) * 42);
-    return { background: `color-mix(in srgb, var(${t > 0 ? "--green" : "--red"}) ${pct}%, transparent)` };
+  }, [p.result, p.fields, wide.groups]);
+  const [tip, setTip] = useState<OpenTip | null>(null);
+  const openTip = (colId: string, el: HTMLElement) => {
+    const t = tips.get(colId);
+    if (!t) return;
+    const r = el.getBoundingClientRect();
+    setTip({ ...t, left: r.left, right: r.right, top: r.bottom, alignRight: colId.includes("|") });
   };
+  // the tip is pinned to where the header was, so close it when anything scrolls
+  useEffect(() => {
+    if (!tip) return;
+    const close = () => setTip(null);
+    window.addEventListener("scroll", close, { capture: true, passive: true });
+    return () => window.removeEventListener("scroll", close, { capture: true });
+  }, [tip]);
+
   const sort = p.spec.sort[0] ?? (p.result.values[0] ? { by: p.result.values[0].key, dir: "desc" } : undefined);
 
+  const { result, setSpec } = p;
   const columns = useMemo(() => {
-    const { row_fields, column_fields, values } = p.result;
-    const sortHeader = (id: string, text: string, numeric: boolean) => {
+    const { row_fields, column_fields, values } = result;
+    const sortHeader = (id: string, text: string, numeric: boolean, full: string) => {
       const active = sort?.by === id;
       return (
         <button
           type="button"
-          onClick={() => p.setSpec((s) => setSort(s, id))}
+          onClick={() => setSpec((s) => setSort(s, id))}
           className={`inline-flex w-full items-center gap-1 ${numeric ? "justify-end" : ""} ${active ? "text-accent-ink" : ""}`}
-          aria-label={`Sort by ${text}`}
+          aria-label={`Sort by ${full}`}
         >
           {text}
           <span aria-hidden className="text-[10px]">{active ? (sort?.dir === "asc" ? "▲" : "▼") : ""}</span>
@@ -78,7 +85,7 @@ export function PivotTable(p: {
     const dims = row_fields.map((f) =>
       helper.accessor((r) => r.dims[f.id], {
         id: `dim:${f.id}`,
-        header: () => sortHeader(f.id, f.label, false),
+        header: () => sortHeader(f.id, f.label, false, f.label),
         cell: (c) => c.getValue(),
       }),
     );
@@ -86,7 +93,7 @@ export function PivotTable(p: {
       values.map((v) =>
         helper.accessor((r): unknown => r.cells[`${groupId}|${v.key}`], {
           id: `${groupId}|${v.key}`,
-          header: () => sortHeader(v.key, v.short, true),
+          header: () => sortHeader(v.key, v.short, true, v.label),
           cell: (c) => formatValue(c.getValue() as number | null, v),
         }),
       );
@@ -105,7 +112,7 @@ export function PivotTable(p: {
         }),
       ),
     ]);
-  }, [wide.groups, sort?.by, sort?.dir, p]);
+  }, [wide.groups, sort?.by, sort?.dir, result, setSpec]);
 
   const table = useTable({ features, columns, data: wide.rows });
 
@@ -115,20 +122,7 @@ export function PivotTable(p: {
 
   return (
     <div>
-      {shades.size > 0 && (
-        <div className="flex flex-wrap items-center justify-end gap-3 border-b border-line px-4 py-2 text-xs text-ink-2">
-          <span className="flex items-center gap-1.5">
-            <i aria-hidden className="h-2.5 w-2.5 rounded-[2px] bg-green" /> better
-          </span>
-          <span className="flex items-center gap-1.5">
-            <i aria-hidden className="h-2.5 w-2.5 rounded-[2px] bg-red" /> worse
-          </span>
-          <label className="flex items-center gap-1.5">
-            <input type="checkbox" checked={shadeOn} onChange={(e) => setShadeOn(e.target.checked)} className="accent-[var(--green)]" />
-            shade
-          </label>
-        </div>
-      )}
+      <ShadeBar result={p.result} spec={p.spec} setSpec={p.setSpec} hasSplit={hasSplit} firstSplit={wide.groups[0]?.labels.join(" · ")} />
     <div className="max-h-[70vh] overflow-auto">
       <table className="w-full border-collapse text-sm">
         <thead className="sticky top-0 z-10 bg-surface">
@@ -143,6 +137,14 @@ export function PivotTable(p: {
                     key={h.id}
                     colSpan={h.colSpan}
                     scope="col"
+                    onMouseEnter={(e) => openTip(h.column.id, e.currentTarget)}
+                    onMouseLeave={() => setTip(null)}
+                    onFocus={(e) => {
+                      // keyboard focus, or a tap on a screen without hover
+                      if (e.target.matches(":focus-visible") || window.matchMedia("(hover: none)").matches)
+                        openTip(h.column.id, e.currentTarget);
+                    }}
+                    onBlur={() => setTip(null)}
                     className={`whitespace-nowrap border-b border-line px-3 py-2 font-mono text-[11px] font-medium uppercase tracking-wide text-ink-2 ${
                       isValue ? "text-right" : "text-left"
                     } ${isGroup ? "border-l px-1.5 text-center normal-case tracking-normal" : ""} ${isFirstDim ? "sticky left-0 z-10 bg-surface" : ""}`}
@@ -184,6 +186,7 @@ export function PivotTable(p: {
         </tbody>
       </table>
     </div>
+      <HeaderTip tip={tip} />
     </div>
   );
 }

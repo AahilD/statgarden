@@ -193,7 +193,7 @@ export function Builder() {
                 ) : resultQ.error ? (
                   <Empty text={resultQ.error.message} tone="error" />
                 ) : resultQ.data && wide ? (
-                  <PivotTable result={resultQ.data} wide={wide} spec={spec} setSpec={setSpec} />
+                  <PivotTable result={resultQ.data} wide={wide} spec={spec} setSpec={setSpec} fields={fields} />
                 ) : (
                   <div className="h-64 animate-pulse" />
                 )}

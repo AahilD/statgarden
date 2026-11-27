@@ -47,6 +47,8 @@ class Filter(BaseModel):
 class Value(BaseModel):
     field: str
     mode: Mode | None = None
+    # shading direction for this view (the web table uses it; queries ignore it)
+    better: Literal["higher", "lower", "none"] | None = None
 
 
 class Calc(BaseModel):
@@ -87,4 +89,11 @@ class PivotSpec(BaseModel):
     calcs: list[Calc] = Field(default_factory=list, max_length=MAX_CALCS)
     sort: list[Sort] = Field(default_factory=list, max_length=3)
     limit: int = Field(default=100, ge=1, le=MAX_LIMIT)
+    # table shading; display only, kept so a view round-trips intact
+    shade: str = "rank"
     chart: Chart = Field(default_factory=Chart)
+
+    @field_validator("shade", mode="before")
+    @classmethod
+    def _shade(cls, v: Any) -> Any:
+        return v if v in ("rank", "average", "split", "baseline", "off") else "rank"

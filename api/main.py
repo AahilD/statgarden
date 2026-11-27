@@ -166,7 +166,13 @@ def query(spec: PivotSpec):
         raise HTTPException(400, str(err)) from err
 
     # chart settings don't change the numbers, so they're left out of the cache key
-    key = hashlib.sha1(json.dumps(spec.model_dump(exclude={"chart"}), sort_keys=True, default=str).encode()).hexdigest()
+    key = hashlib.sha1(
+        json.dumps(
+            spec.model_dump(exclude={"chart": True, "shade": True, "values": {"__all__": {"better"}}}),
+            sort_keys=True,
+            default=str,
+        ).encode()
+    ).hexdigest()
     cur = db.cursor()  # may swap files and clear the cache, so call before reading it
     with _cache_lock:
         if key in _cache:
