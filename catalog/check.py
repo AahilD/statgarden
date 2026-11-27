@@ -36,27 +36,31 @@ def main() -> int:
 
     con = duckdb.connect(str(DB_PATH), read_only=True)
     errs: list[str] = []
+    mark_available(cat, con)
     for ds in cat.datasets:
-        mark_available(cat, con, ds.table)
+        print(f"{ds.label} ({ds.table})")
+        count = next(c for c in ["games", "fga", "poss", "matchup_poss"] if ds.id in cat.field(c).available_in)
         for f in cat.fields:
-            if not f.available:
+            if ds.id not in f.available_in:
                 continue
             if f.kind == "dimension":
-                spec = PivotSpec(dataset=ds.id, filters=SAMPLE, rows=[f.id], values=[{"field": "games"}], limit=5000)
+                spec = PivotSpec(dataset=ds.id, filters=SAMPLE, rows=[f.id], values=[{"field": count}], limit=5000)
             else:
                 spec = PivotSpec(dataset=ds.id, filters=SAMPLE, values=[{"field": f.id}])
             try:
                 q = build(spec, cat)
                 rows = con.execute(q.sql, q.params).fetchall()
             except (SpecError, duckdb.Error) as err:
-                errs.append(f"{f.id}: {str(err).splitlines()[0]}")
+                errs.append(f"{ds.id}.{f.id}: {str(err).splitlines()[0]}")
                 continue
             if f.kind == "dimension":
                 values = {str(r[0]) for r in rows}
                 extra = values - set(f.bins or []) if f.bins else set()
                 if extra:
-                    errs.append(f"{f.id}: values not in bins: {sorted(extra)[:5]}")
+                    errs.append(f"{ds.id}.{f.id}: values not in bins: {sorted(extra)[:5]}")
                 print(f"  ok  {f.id:<20} {len(values):>4} values")
+            elif rows[0][-1] is None:
+                errs.append(f"{ds.id}.{f.id}: no values in the sample season")
             else:
                 print(f"  ok  {f.id:<20} league = {rows[0][-1]:,.4g}")
 

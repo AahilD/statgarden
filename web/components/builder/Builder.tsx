@@ -15,7 +15,10 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type FieldMeta } from "@/lib/api";
 import { decodeSpec, defaultSpec, encodeSpec, type PivotSpec } from "@/lib/spec";
-import { addField, defaultWell, forQuery, type Well } from "@/lib/specOps";
+import { addField, defaultWell, forQuery, switchDataset, type Well } from "@/lib/specOps";
+import { calcField, calcFits, deleteCalc, newCalcId, saveCalc } from "@/lib/calcs";
+import { CalcEditor } from "./CalcEditor";
+import { forgetCalc, rememberCalc, useSavedCalcs, type SavedCalc } from "@/lib/savedCalcs";
 import { FieldList, FieldPill } from "./FieldList";
 import { Toolbar } from "./Toolbar";
 import { ChartWells, Wells } from "./Wells";
@@ -29,11 +32,30 @@ export function Builder() {
   const [dragging, setDragging] = useState<FieldMeta | null>(null);
   const [showFields, setShowFields] = useState(false); // phones: field list is collapsible
 
+  const [editing, setEditing] = useState<string | "new" | null>(null); // calc being made or changed
+
   const fieldsQ = useQuery({ queryKey: ["fields", spec.dataset], queryFn: () => api.fields(spec.dataset) });
   const seasonsQ = useQuery({ queryKey: ["seasons", spec.dataset], queryFn: () => api.seasons(spec.dataset) });
+  const datasetsQ = useQuery({ queryKey: ["datasets"], queryFn: api.datasets, staleTime: Infinity });
+  const savedCalcs = useSavedCalcs();
+  const savedHere = useMemo(() => {
+    const inView = new Set(spec.calcs.map((c) => c.label.toLowerCase()));
+    return savedCalcs.filter((c) => !inView.has(c.label.toLowerCase()));
+  }, [savedCalcs, spec.calcs]);
+  function addSaved(c: SavedCalc) {
+    setSpec((s) => {
+      if (s.calcs.length >= 8) return s;
+      const id = newCalcId(s, c.label);
+      return addField(saveCalc(s, { ...c, id }), calcField({ ...c, id }), "values");
+    });
+  }
+  const calcFields = useMemo(
+    () => spec.calcs.map((c) => calcField(c, !fieldsQ.data || calcFits(c, fieldsQ.data.fields))),
+    [spec.calcs, fieldsQ.data],
+  );
   const fields = useMemo(
-    () => new Map((fieldsQ.data?.fields ?? []).map((f) => [f.id, f])),
-    [fieldsQ.data],
+    () => new Map([...(fieldsQ.data?.fields ?? []), ...calcFields].map((f) => [f.id, f])),
+    [fieldsQ.data, calcFields],
   );
 
   // keep the link in step with the view (replaceState: no history entry per drag)
@@ -80,9 +102,18 @@ export function Builder() {
   }
 
   return (
-    <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragging(null)}>
+    <DndContext id="lab" sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setDragging(null)}>
       <div className="mx-auto max-w-[1600px] px-4 py-5">
-        <Toolbar spec={spec} setSpec={setSpec} seasons={seasonsQ.data ?? []} />
+        <Toolbar
+          spec={spec}
+          setSpec={setSpec}
+          seasons={seasonsQ.data ?? []}
+          datasets={datasetsQ.data ?? []}
+          onDataset={(id) => {
+            setEditing(null);
+            setSpec((s) => switchDataset(s, id));
+          }}
+        />
 
         <div className="mt-5 grid gap-4 md:grid-cols-[240px_minmax(0,1fr)]">
           <aside className="md:sticky md:top-[78px] md:self-start">
@@ -102,6 +133,36 @@ export function Builder() {
                 loading={fieldsQ.isLoading}
                 error={fieldsQ.error?.message}
                 onAdd={add}
+                calcs={calcFields}
+                onNewCalc={() => setEditing("new")}
+                onEditCalc={(id) => setEditing(id)}
+                saved={savedHere}
+                onAddSaved={addSaved}
+                onForgetSaved={forgetCalc}
+                editor={
+                  editing ? (
+                    <CalcEditor
+                      key={editing}
+                      calc={editing === "new" ? null : (spec.calcs.find((c) => c.id === editing) ?? null)}
+                      dataset={spec.dataset}
+                      fields={fieldsQ.data?.fields ?? []}
+                      onClose={() => setEditing(null)}
+                      onDelete={editing === "new" ? undefined : () => {
+                        setSpec((s) => deleteCalc(s, editing));
+                        setEditing(null);
+                      }}
+                      onSave={(c) => {
+                        rememberCalc(c);
+                        setSpec((s) => {
+                          const id = c.id ?? newCalcId(s, c.label);
+                          const next = saveCalc(s, { ...c, id });
+                          return c.id ? next : addField(next, calcField({ ...c, id }), "values");
+                        });
+                        setEditing(null);
+                      }}
+                    />
+                  ) : undefined
+                }
               />
             </div>
           </aside>

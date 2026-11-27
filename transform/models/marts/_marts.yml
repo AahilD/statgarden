@@ -25,3 +25,41 @@ models:
         data_tests: [not_null]
       - name: pts
         data_tests: [not_null]
+  - name: fact_team_game
+    description: One row per team per game, with the opponent's numbers alongside.
+    columns:
+      - name: team_game_key
+        data_tests: [unique, not_null]
+      - name: opp_team_id
+        data_tests: [not_null]
+      - name: pts
+        data_tests: [not_null]
+  - name: fact_shot
+    description: One row per shot attempt, with game context.
+    columns:
+      - name: shot_key
+        data_tests: [unique, not_null]
+      - name: shot_zone
+        data_tests: [not_null]
+  - name: fact_player_season
+    description: One row per player per season type, with season-only tracking, defended shots and hustle.
+    columns:
+      - name: player_season_key
+        data_tests: [unique, not_null]
+  - name: fact_lineup
+    description: One row per lineup per team per season type (Base and Advanced views joined).
+    columns:
+      - name: lineup_key
+        data_tests: [unique, not_null]
+  - name: fact_play_type
+    description: One row per player, team, season type, play type and side.
+    columns:
+      - name: play_type_key
+        data_tests: [unique, not_null]
+  - name: fact_matchup
+    description: One row per defender, per player guarded, per game.
+    columns:
+      - name: matchup_key
+        data_tests: [unique, not_null]
+      - name: team_id
+        data_tests: [not_null]

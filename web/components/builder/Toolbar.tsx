@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { SeasonMeta } from "@/lib/api";
+import type { DatasetMeta, SeasonMeta } from "@/lib/api";
 import { encodeSpec, type PivotSpec } from "@/lib/spec";
 import { filterValue, toggleIn } from "@/lib/specOps";
 import { usePopover } from "@/lib/usePopover";
@@ -12,6 +12,8 @@ export function Toolbar(p: {
   spec: PivotSpec;
   setSpec: (fn: (s: PivotSpec) => PivotSpec) => void;
   seasons: SeasonMeta[];
+  datasets: DatasetMeta[];
+  onDataset: (id: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const seasons = [...new Set(p.seasons.map((s) => s.season))].sort().reverse();
@@ -32,6 +34,27 @@ export function Toolbar(p: {
   return (
     <div className="flex flex-wrap items-center gap-x-7 gap-y-3">
       <h1 className="title-caps text-2xl leading-none">Lab</h1>
+
+      {p.datasets.length > 1 && (
+        <div role="radiogroup" aria-label="Data" className="inline-flex flex-wrap gap-0.5 rounded-btn border border-line bg-surface p-1">
+          {p.datasets.map((d) => {
+            const on = p.spec.dataset === d.id;
+            return (
+              <button
+                key={d.id}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                title={d.grain}
+                onClick={() => p.onDataset(d.id)}
+                className={`rounded-chip px-3 py-1 text-sm font-medium ${on ? "bg-ink text-bg" : "text-ink-2 hover:text-ink"}`}
+              >
+                {d.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <span className="label-mono">Season</span>

@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, model_validator
 
 CATALOG_PATH = Path(__file__).resolve().parent.parent / "catalog" / "fields.yaml"
 
-Mode = Literal["total", "per_game", "per_36"]
+Mode = Literal["total", "per_game", "per_36", "per_100"]
 
 
 class FieldDef(BaseModel):
@@ -38,7 +38,10 @@ class FieldDef(BaseModel):
     default_mode: Mode | None = None
     format: str | None = None
     higher_is_better: bool | None = None
-    available: bool = True  # set at startup
+    datasets: list[str] | None = None  # only these datasets (default: any whose table has the columns)
+    hidden: bool = False  # a building block for other fields; not shown in the field list
+    available: bool = True  # set at startup: works in at least one dataset
+    available_in: set[str] = Field(default_factory=set, exclude=True)  # set at startup
 
     @model_validator(mode="after")
     def _check(self) -> FieldDef:
@@ -70,6 +73,9 @@ class Dataset(BaseModel):
     label: str
     grain: str
     table: str
+    modes: list[Mode] = Field(default_factory=lambda: ["total", "per_game", "per_36", "per_100"])
+    # how many games one row stands for: 1 for game-level rows, the gp column for season rows
+    games: str = "1"
     default: dict = Field(default_factory=dict)
 
 
@@ -104,18 +110,39 @@ def load_catalog(path: Path = CATALOG_PATH) -> Catalog:
     return Catalog(**yaml.safe_load(path.read_text()))
 
 
-def mark_available(cat: Catalog, con, table: str) -> None:
-    """Try each field's SQL against the table; mark the ones that don't work yet."""
+def field_sql(cat: Catalog, f: FieldDef) -> list[str]:
+    exprs = [f.expr] if f.expr else [cat.field(r).expr for r in f.requires]
+    if f.key:
+        exprs.append(f.key)
+    if f.weight:
+        exprs.append(cat.field(f.weight).expr)
+    return [e for e in exprs if e and e != "count(*)"]
+
+
+def mark_available(cat: Catalog, con) -> None:
+    """Try each field's SQL against each dataset's table; note where it works."""
     for f in cat.fields:
-        exprs = [f.expr] if f.expr else [cat.field(r).expr for r in f.requires]
-        if f.key:
-            exprs.append(f.key)
-        if f.weight:
-            exprs.append(cat.field(f.weight).expr)
-        try:
-            for e in exprs:
-                if e and e != "count(*)":
-                    con.execute(f"SELECT {e} FROM {table} LIMIT 0")
-            f.available = True
-        except Exception:
-            f.available = False
+        f.available_in = set()
+    for ds in cat.datasets:
+        for f in cat.fields:
+            if f.datasets is not None and ds.id not in f.datasets:
+                continue
+            try:
+                for e in field_sql(cat, f):
+                    con.execute(f"SELECT {e} FROM {ds.table} LIMIT 0")
+                f.available_in.add(ds.id)
+            except Exception:
+                pass
+    for f in cat.fields:
+        f.available = bool(f.available_in)
+
+
+def modes_in(cat: Catalog, f: FieldDef, ds: Dataset) -> list[str]:
+    """The modes a field can be shown in, in this dataset."""
+    poss = cat.field("poss")
+    ok = [m for m in f.modes if m in ds.modes]
+    if "per_100" in ok and not (poss and ds.id in poss.available_in):
+        ok.remove("per_100")
+    if "per_36" in ok and not (cat.field("min") and ds.id in cat.field("min").available_in):
+        ok.remove("per_36")
+    return ok or ["total"]

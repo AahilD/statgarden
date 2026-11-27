@@ -11,7 +11,7 @@ import { usePopover } from "@/lib/usePopover";
 
 type SetSpec = (fn: (s: PivotSpec) => PivotSpec) => void;
 
-const MODE_LABEL: Record<Mode, string> = { per_game: "per game", per_36: "per 36", total: "total" };
+const MODE_LABEL: Record<Mode, string> = { per_game: "per game", per_36: "per 36", per_100: "per 100 poss", total: "total" };
 // season and season type have their own controls in the toolbar
 const TOOLBAR_FILTERS = new Set(["season", "season_type"]);
 
@@ -62,7 +62,7 @@ export function Wells(p: { spec: PivotSpec; setSpec: SetSpec; fields: Map<string
       </WellRow>
       <WellRow id="filters" title="Filters" hint="Leave games out, e.g. Team" dragging={p.dragging}>
         {filters.map((f) => (
-          <FilterChip key={f.field} filter={f} field={p.fields.get(f.field)} setSpec={p.setSpec} />
+          <FilterChip key={f.field} filter={f} field={p.fields.get(f.field)} setSpec={p.setSpec} dataset={p.spec.dataset} />
         ))}
       </WellRow>
     </div>
@@ -157,7 +157,9 @@ function Chip(p: { tone: Tone; onRemove: () => void; children: React.ReactNode; 
 const NUM_OPS = [">=", "<=", "=", ">", "<"] as const;
 
 function describe(f: Filter, field?: FieldMeta) {
-  const name = field?.label ?? f.field;
+  const group = f.scope === "group";
+  const mode = group && f.mode && f.mode !== "total" ? ` ${MODE_LABEL[f.mode]}` : "";
+  const name = (field?.label ?? f.field) + mode + (field?.kind === "measure" ? (group ? " (row)" : " (game)") : "");
   if (!isComplete(f)) return `${name}: choose…`;
   if (Array.isArray(f.value)) {
     const vals = f.value as (string | number)[];
@@ -167,7 +169,7 @@ function describe(f: Filter, field?: FieldMeta) {
   return `${name} ${f.op.replace(">=", "≥").replace("<=", "≤")} ${String(f.value)}`;
 }
 
-function FilterChip(p: { filter: Filter; field?: FieldMeta; setSpec: SetSpec }) {
+function FilterChip(p: { filter: Filter; field?: FieldMeta; setSpec: SetSpec; dataset: string }) {
   const { open, setOpen, ref } = usePopover(!isComplete(p.filter));
 
   const remove = () => p.setSpec((s) => ({ ...s, filters: s.filters.filter((f) => f.field !== p.filter.field) }));
@@ -179,9 +181,9 @@ function FilterChip(p: { filter: Filter; field?: FieldMeta; setSpec: SetSpec }) 
       {open && p.field && (
         <div className="absolute left-0 top-full z-30 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-card border border-line bg-surface-2 p-3 shadow-xl">
           {p.field.kind === "dimension" ? (
-            <ValuePicker filter={p.filter} field={p.field} setSpec={p.setSpec} />
+            <ValuePicker filter={p.filter} field={p.field} setSpec={p.setSpec} dataset={p.dataset} />
           ) : (
-            <NumberFilter filter={p.filter} setSpec={p.setSpec} />
+            <NumberFilter filter={p.filter} field={p.field} setSpec={p.setSpec} />
           )}
         </div>
       )}
@@ -189,11 +191,11 @@ function FilterChip(p: { filter: Filter; field?: FieldMeta; setSpec: SetSpec }) 
   );
 }
 
-function ValuePicker(p: { filter: Filter; field: FieldMeta; setSpec: SetSpec }) {
+function ValuePicker(p: { filter: Filter; field: FieldMeta; setSpec: SetSpec; dataset: string }) {
   const [q, setQ] = useState("");
   const { data, isLoading } = useQuery({
-    queryKey: ["values", p.field.id, q],
-    queryFn: () => api.values(p.field.id, q),
+    queryKey: ["values", p.dataset, p.field.id, q],
+    queryFn: () => api.values(p.field.id, q, p.dataset),
   });
   const chosen = (Array.isArray(p.filter.value) ? p.filter.value : []) as (string | number)[];
   const toggle = (v: string | number) => {
@@ -236,15 +238,34 @@ function ValuePicker(p: { filter: Filter; field: FieldMeta; setSpec: SetSpec }) 
   );
 }
 
-function NumberFilter(p: { filter: Filter; setSpec: SetSpec }) {
+function NumberFilter(p: { filter: Filter; field: FieldMeta; setSpec: SetSpec }) {
   const value = typeof p.filter.value === "number" ? p.filter.value : "";
+  const scope = p.filter.scope ?? "game";
+  const modes = p.field.modes.length ? p.field.modes : (["total"] as Mode[]);
+  const mode = p.filter.mode ?? (modes.includes("total") ? "total" : modes[0]);
+  const set = (patch: Partial<Filter>) => p.setSpec((s) => setFilter(s, p.filter.field, patch));
   return (
     <div>
-      <p className="label-mono">Per game</p>
+      <p className="label-mono">{p.field.label}</p>
+      <div role="radiogroup" aria-label="Apply to" className="mt-2 grid grid-cols-2 rounded-btn border border-line bg-bg p-0.5">
+        {(["game", "group"] as const).map((sc) => (
+          <button
+            key={sc}
+            type="button"
+            role="radio"
+            aria-checked={scope === sc}
+            onClick={() => set({ scope: sc, mode: sc === "group" ? mode : undefined })}
+            className={`rounded-chip px-2 py-1 text-xs font-medium ${scope === sc ? "bg-ink text-bg" : "text-ink-2 hover:text-ink"}`}
+          >
+            {sc === "game" ? "Each game" : "Whole row"}
+          </button>
+        ))}
+      </div>
       <div className="mt-2 flex gap-2">
         <select
           value={p.filter.op}
-          onChange={(e) => p.setSpec((s) => setFilter(s, p.filter.field, { op: e.target.value as Filter["op"] }))}
+          onChange={(e) => set({ op: e.target.value as Filter["op"] })}
+          aria-label="Comparison"
           className="rounded-btn border border-line bg-bg px-2 py-1.5 font-mono text-sm"
         >
           {NUM_OPS.map((o) => (
@@ -257,16 +278,33 @@ function NumberFilter(p: { filter: Filter; setSpec: SetSpec }) {
           autoFocus
           type="number"
           inputMode="decimal"
+          step="any"
           value={value}
-          onChange={(e) =>
-            p.setSpec((s) =>
-              setFilter(s, p.filter.field, { value: e.target.value === "" ? null : Number(e.target.value) }),
-            )
-          }
-          className="w-full rounded-btn border border-line bg-bg px-2.5 py-1.5 font-mono text-sm focus:border-accent focus:outline-none"
+          aria-label="Value"
+          onChange={(e) => set({ value: e.target.value === "" ? null : Number(e.target.value) })}
+          className="w-full min-w-0 rounded-btn border border-line bg-bg px-2.5 py-1.5 font-mono text-sm focus:border-accent focus:outline-none"
         />
+        {scope === "group" && modes.length > 1 && (
+          <select
+            value={mode}
+            onChange={(e) => set({ mode: e.target.value as Mode })}
+            aria-label="Which number"
+            className="rounded-btn border border-line bg-bg px-1.5 py-1.5 font-mono text-xs"
+          >
+            {modes.map((m) => (
+              <option key={m} value={m}>
+                {MODE_LABEL[m]}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
-      <p className="mt-2 text-xs text-ink-2">Keeps only the games that meet this, before anything is added up.</p>
+      <p className="mt-2 text-xs text-ink-2">
+        {scope === "game"
+          ? "Keeps only the games that meet this, before anything is added up."
+          : "Keeps only the rows whose added-up number meets this, e.g. 1,500+ total minutes."}
+      </p>
+      {p.field.format?.includes("%") && <p className="mt-1 text-xs text-ink-2">Percentages are decimals: 0.55 means 55%.</p>}
     </div>
   );
 }

@@ -1,0 +1,50 @@
+-- What the V3/V2 box scores add for a team, one row per team per game.
+with adv as ({{ box_teams('box_advanced') }}),
+misc as ({{ box_teams('box_misc') }}),
+hustle as ({{ box_teams('box_hustle') }}),
+trk as ({{ box_teams('box_tracking') }})
+
+select
+    adv.gameId                                                    as game_id,
+    cast(adv.teamId as bigint)                                    as team_id,
+    {{ num('adv.statistics_possessions') }}                       as poss,
+    {{ num('adv.statistics_offensiveRating') }}                   as off_rtg,
+    {{ num('adv.statistics_defensiveRating') }}                   as def_rtg,
+    {{ num('adv.statistics_netRating') }}                         as net_rtg,
+    {{ num('adv.statistics_pace') }}                              as pace,
+    {{ num('adv.statistics_PIE') }}                               as pie,
+    {{ num('misc.statistics_pointsOffTurnovers') }}               as pts_off_tov,
+    {{ num('misc.statistics_pointsSecondChance') }}               as pts_2nd_chance,
+    {{ num('misc.statistics_pointsFastBreak') }}                  as pts_fast_break,
+    {{ num('misc.statistics_pointsPaint') }}                      as pts_paint,
+    {{ num('misc.statistics_blocksAgainst') }}                    as blk_against,
+    {{ num('misc.statistics_foulsDrawn') }}                       as fouls_drawn,
+    {{ num('hustle.statistics_contestedShots') }}                 as contested_shots,
+    {{ num('hustle.statistics_contestedShots2pt') }}              as contested_2pt,
+    {{ num('hustle.statistics_contestedShots3pt') }}              as contested_3pt,
+    {{ num('hustle.statistics_deflections') }}                    as deflections,
+    {{ num('hustle.statistics_chargesDrawn') }}                   as charges_drawn,
+    {{ num('hustle.statistics_screenAssists') }}                  as screen_ast,
+    {{ num('hustle.statistics_screenAssistPoints') }}             as screen_ast_pts,
+    {{ num('hustle.statistics_looseBallsRecoveredTotal') }}       as loose_balls,
+    {{ num('hustle.statistics_boxOuts') }}                        as box_outs,
+    {{ num('hustle.statistics_offensiveBoxOuts') }}               as off_box_outs,
+    {{ num('hustle.statistics_defensiveBoxOuts') }}               as def_box_outs,
+    {{ num('trk.statistics_distance') }}                          as distance,
+    {{ num('trk.statistics_touches') }}                           as touches,
+    {{ num('trk.statistics_passes') }}                            as passes,
+    {{ num('trk.statistics_secondaryAssists') }}                  as secondary_ast,
+    {{ num('trk.statistics_freeThrowAssists') }}                  as ft_ast,
+    {{ num('trk.statistics_reboundChancesOffensive') }}           as oreb_chances,
+    {{ num('trk.statistics_reboundChancesDefensive') }}           as dreb_chances,
+    {{ num('trk.statistics_reboundChancesTotal') }}               as reb_chances,
+    {{ num('trk.statistics_contestedFieldGoalsMade') }}           as contested_fgm,
+    {{ num('trk.statistics_contestedFieldGoalsAttempted') }}      as contested_fga,
+    {{ num('trk.statistics_uncontestedFieldGoalsMade') }}         as uncontested_fgm,
+    {{ num('trk.statistics_uncontestedFieldGoalsAttempted') }}    as uncontested_fga,
+    {{ num('trk.statistics_defendedAtRimFieldGoalsMade') }}       as rim_def_fgm,
+    {{ num('trk.statistics_defendedAtRimFieldGoalsAttempted') }}  as rim_def_fga
+from adv
+left join misc   using (gameId, teamId)
+left join hustle using (gameId, teamId)
+left join trk    using (gameId, teamId)

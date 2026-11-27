@@ -166,8 +166,13 @@ export function PivotTable(p: {
                   <td
                     key={cell.id}
                     style={isValue ? shadeStyle(id, row.index) : undefined}
-                    className={`whitespace-nowrap px-3 py-1.5 ${
-                      isValue ? "text-right font-mono tabular-nums" : id === "__rank" ? "w-8 font-mono text-xs" : ""
+                    className={`px-3 py-1.5 ${
+                      isValue
+                        ? "whitespace-nowrap text-right font-mono tabular-nums"
+                        : id === "__rank"
+                          ? "w-8 whitespace-nowrap font-mono text-xs"
+                          : // long labels (lineups) wrap on phones so the numbers stay in view
+                            "min-w-[8rem] max-w-[12rem] sm:max-w-none sm:whitespace-nowrap"
                     } ${isFirstDim ? "sticky left-0 bg-surface font-medium" : ""} ${startsGroup ? "border-l border-line" : ""}`}
                   >
                     <table.FlexRender cell={cell} />

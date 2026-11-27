@@ -13,7 +13,7 @@ export function canDrop(field: FieldMeta, well: Well): boolean {
   if (well === "values" || well === "y") return field.kind === "measure";
   if (well === "x" || well === "color") return field.kind === "dimension";
   if (well === "rows" || well === "columns") return field.kind === "dimension";
-  return field.kind === "dimension" || field.agg === "sum";
+  return true; // filters take any field: dimensions pick values, numbers get a comparison
 }
 
 export function defaultWell(field: FieldMeta): Well {
@@ -108,8 +108,8 @@ export function isComplete(f: Filter): boolean {
 export type QuerySpec = Omit<PivotSpec, "chart">;
 
 export function forQuery(spec: PivotSpec): QuerySpec {
-  const { v, dataset, rows, columns, values, sort, limit } = spec;
-  return { v, dataset, filters: spec.filters.filter(isComplete), rows, columns, values, sort, limit };
+  const { v, dataset, rows, columns, values, calcs, sort, limit } = spec;
+  return { v, dataset, filters: spec.filters.filter(isComplete), rows, columns, values, calcs, sort, limit };
 }
 
 export function clearChart(spec: PivotSpec, well: ChartWell): PivotSpec {
@@ -118,4 +118,48 @@ export function clearChart(spec: PivotSpec, well: ChartWell): PivotSpec {
 
 export function setView(spec: PivotSpec, view: ChartView): PivotSpec {
   return { ...spec, chart: { ...spec.chart, view } };
+}
+
+/** Default rows and values when switching to a dataset. Seasons, season types, limit and calcs carry over. */
+type Start = Pick<PivotSpec, "rows" | "values"> & { filters?: PivotSpec["filters"] };
+
+const DATASET_START: Record<string, Start> = {
+  player_game: { rows: ["player"], values: [{ field: "pts", mode: "per_game" }, { field: "games" }, { field: "ts_pct" }] },
+  team_game: { rows: ["team"], values: [{ field: "off_rtg" }, { field: "def_rtg" }, { field: "net_rtg" }] },
+  shots: { rows: ["shot_zone"], values: [{ field: "fga" }, { field: "fg_pct" }, { field: "pts_per_shot" }] },
+  player_season: {
+    rows: ["player"],
+    values: [{ field: "drives", mode: "per_game" }, { field: "pts_per_drive" }, { field: "catch_shoot_fg3_pct" }],
+  },
+  // lineups of different sizes overlap, so start on 5-man units only
+  lineups: {
+    rows: ["lineup"],
+    values: [{ field: "min", mode: "total" }, { field: "net_rtg" }, { field: "off_rtg" }, { field: "def_rtg" }],
+    filters: [{ field: "lineup_size", op: "in", value: ["5-man"] }],
+  },
+  play_types: {
+    rows: ["play_type"],
+    values: [{ field: "poss", mode: "total" }, { field: "ppp" }, { field: "score_pct" }],
+    filters: [{ field: "side", op: "in", value: ["Offense"] }],
+  },
+  matchups: {
+    rows: ["player"],
+    values: [{ field: "matchup_poss", mode: "total" }, { field: "matchup_pts_per_100" }, { field: "matchup_fg_pct" }],
+  },
+};
+
+const KEEP_FILTERS = new Set(["season", "season_type"]);
+
+export function switchDataset(spec: PivotSpec, dataset: string): PivotSpec {
+  if (spec.dataset === dataset) return spec;
+  const { filters = [], ...start } = DATASET_START[dataset] ?? { rows: [], values: [] };
+  return {
+    ...spec,
+    dataset,
+    ...start,
+    columns: [],
+    filters: [...spec.filters.filter((f) => KEEP_FILTERS.has(f.field)), ...filters],
+    sort: [],
+    chart: { ...spec.chart, x: null, y: null, color: null },
+  };
 }

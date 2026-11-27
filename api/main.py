@@ -12,11 +12,12 @@ from datetime import UTC, datetime
 
 from fastapi import FastAPI, HTTPException
 from fastapi import Query as Q
+from pydantic import BaseModel
 
-from api.catalog import load_catalog, mark_available
+from api.catalog import load_catalog, mark_available, modes_in
 from api.db import Database
 from api.spec import PivotSpec
-from api.sql import MODE_SHORT, SpecError, build, fold
+from api.sql import SpecError, build, check_formula, fold
 
 # The website reaches this through its own /api proxy (web/next.config.ts), so no CORS.
 app = FastAPI(
@@ -33,8 +34,7 @@ CACHE_SIZE = 500
 
 def _on_swap(con) -> None:
     """New data published: re-check which fields work and forget cached results."""
-    for ds in catalog.datasets:
-        mark_available(catalog, con, ds.table)
+    mark_available(catalog, con)
     with _cache_lock:
         _cache.clear()
 
@@ -70,10 +70,18 @@ def datasets():
 @app.get("/meta/fields")
 def fields(dataset: str = "player_game"):
     db.cursor()  # opens the newest file, which also refreshes which fields are available
-    if catalog.dataset(dataset) is None:
+    ds = catalog.dataset(dataset)
+    if ds is None:
         raise HTTPException(404, f"unknown dataset {dataset!r}")
-    hidden = {"expr", "key", "formula", "requires", "weight"}  # SQL stays on the server
-    return {"groups": catalog.groups, "fields": [f.model_dump(exclude=hidden) for f in catalog.fields]}
+    sql_keys = {"expr", "key", "formula", "requires", "weight", "datasets"}  # SQL stays on the server
+    out = []
+    for f in catalog.fields:
+        here = ds.id in f.available_in
+        # a field shows up where it works; one that works nowhere yet shows (greyed out) where it's meant to go
+        if not here and (f.available or (f.datasets is not None and ds.id not in f.datasets)):
+            continue
+        out.append({**f.model_dump(exclude=sql_keys), "available": here, "modes": modes_in(catalog, f, ds)})
+    return {"groups": catalog.groups, "fields": out}
 
 
 @app.get("/meta/seasons")
@@ -82,9 +90,13 @@ def seasons(dataset: str = "player_game"):
     if ds is None:
         raise HTTPException(404, f"unknown dataset {dataset!r}")
     cur = db.cursor()
+    # season datasets have no game ids, so games and the last game date come from the game logs
     rows = cur.execute(
-        f"SELECT season, season_type, count(DISTINCT game_id) AS games, max(game_date) AS last_game "
-        f"FROM {ds.table} GROUP BY 1, 2 ORDER BY 1 DESC, 2"
+        f"WITH here AS (SELECT DISTINCT season, season_type FROM {ds.table}), "
+        f"g AS (SELECT season, season_type, count(DISTINCT game_id) AS games, max(game_date) AS last_game "
+        f"FROM fact_player_game GROUP BY 1, 2) "
+        f"SELECT season, season_type, g.games, g.last_game FROM here JOIN g USING (season, season_type) "
+        f"ORDER BY 1 DESC, 2"
     ).fetchall()
     return [{"season": s, "season_type": t, "games": g, "last_game": str(d)} for s, t, g, d in rows]
 
@@ -94,7 +106,7 @@ def values(field: str, dataset: str = "player_game", q: str = "", limit: int = Q
     """Distinct values of a dimension, for filter pickers."""
     ds = catalog.dataset(dataset)
     f = catalog.field(field)
-    if ds is None or f is None or f.kind != "dimension" or not f.available:
+    if ds is None or f is None or f.kind != "dimension" or ds.id not in f.available_in:
         raise HTTPException(404, "unknown or unavailable dimension")
     cur = db.cursor()
     sql = f"SELECT ({f.expr}) AS v, count(*) AS n FROM {ds.table}"
@@ -179,13 +191,13 @@ def query(spec: PivotSpec):
         "values": [
             {
                 "key": v.key,
-                "field": v.field.id,
+                "field": v.field_id,
                 "mode": v.mode,
                 "label": v.label,
-                "short": v.field.short + MODE_SHORT[v.mode],
-                "format": v.field.format,
-                "agg": v.field.agg,
-                "higher_is_better": v.field.higher_is_better,
+                "short": v.short,
+                "format": v.format,
+                "agg": v.agg,
+                "higher_is_better": v.higher_is_better,
             }
             for v in q.values
         ],
@@ -197,3 +209,24 @@ def query(spec: PivotSpec):
         if len(_cache) > CACHE_SIZE:
             _cache.popitem(last=False)
     return {**result, "cached": False}
+
+
+class FormulaCheck(BaseModel):
+    formula: str
+    dataset: str = "player_game"
+
+
+@app.post("/calc/check")
+def calc_check(body: FormulaCheck):
+    """Is this formula OK? For the calculated-stat editor, as you type."""
+    db.cursor()
+    try:
+        used = check_formula(body.formula, body.dataset, catalog)
+    except (SpecError, ValueError) as err:  # ValueError: pydantic (empty or too long)
+        msg = str(err).removeprefix("Formula: ").splitlines()[0]
+        return {"ok": False, "error": msg, "fields": []}
+    return {
+        "ok": True,
+        "error": None,
+        "fields": [{"id": f, "label": catalog.field(f).label} for f in dict.fromkeys(used)],
+    }

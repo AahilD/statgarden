@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Daily cdn.nba.com pull. cdn lets ~600 calls through and then answers 403,
 # so this grabs one day's worth, then loads, builds and publishes what came in.
-# Run by launchd (scripts/com.statgarden.daily-cdn.plist); safe to run by hand.
+# Run daily by the Claude scheduled task "statgarden-daily-cdn"; safe to run by hand.
 set -u
 export PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 cd "$(dirname "$0")/.." || exit 1

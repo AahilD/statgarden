@@ -12,13 +12,17 @@ export type FieldMeta = {
   description: string;
   type: "text" | "int" | "date" | "bool" | "bucket" | null;
   bins: string[] | null;
-  agg: "sum" | "count" | "ratio" | "weighted_avg" | null;
+  agg: "sum" | "count" | "ratio" | "weighted_avg" | "calc" | null;
   modes: Mode[];
   default_mode: Mode | null;
   format: string | null;
   higher_is_better: boolean | null;
+  hidden?: boolean;
   available: boolean;
 };
+
+export type DatasetMeta = { id: string; label: string; grain: string; default: Record<string, unknown> };
+export type FormulaCheck = { ok: boolean; error: string | null; fields: { id: string; label: string }[] };
 
 export type SeasonMeta = { season: string; season_type: string; games: number; last_game: string };
 
@@ -67,10 +71,17 @@ export const api = {
   fields: (dataset = "player_game") =>
     get<{ groups: string[]; fields: FieldMeta[] }>(`/meta/fields?dataset=${dataset}`),
   seasons: (dataset = "player_game") => get<SeasonMeta[]>(`/meta/seasons?dataset=${dataset}`),
-  values: (field: string, q = "") =>
+  datasets: () => get<DatasetMeta[]>("/meta/datasets"),
+  values: (field: string, q = "", dataset = "player_game") =>
     get<{ field: string; values: (string | number)[] }>(
-      `/meta/values?field=${encodeURIComponent(field)}&q=${encodeURIComponent(q)}&limit=300`,
+      `/meta/values?field=${encodeURIComponent(field)}&q=${encodeURIComponent(q)}&dataset=${dataset}&limit=300`,
     ),
+  checkFormula: (formula: string, dataset: string) =>
+    request<FormulaCheck>("/calc/check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ formula, dataset }),
+    }),
   query: (spec: QuerySpec) =>
     request<QueryResult>("/query", {
       method: "POST",

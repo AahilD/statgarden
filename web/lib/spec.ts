@@ -3,12 +3,26 @@ import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from
 import { z } from "zod";
 
 const OPS = ["=", "!=", ">", ">=", "<", "<=", "in", "not_in", "between", "contains"] as const;
-const MODES = ["total", "per_game", "per_36"] as const;
+const MODES = ["total", "per_game", "per_36", "per_100"] as const;
+export const CALC_FORMATS = ["number", "precise", "percent", "whole"] as const;
 
 const FilterSchema = z.object({
   field: z.string(),
   op: z.enum(OPS),
   value: z.unknown(),
+  // numbers only: "game" keeps the games that pass before adding up; "group" keeps result rows after
+  scope: z.enum(["game", "group"]).catch("game").optional(),
+  mode: z.enum(MODES).optional(),
+});
+
+/** A stat worked out from other fields, e.g. Points per minute = pts / min. Lives in the link. */
+const CalcSchema = z.object({
+  id: z.string().regex(/^calc_[a-z0-9_]{1,24}$/),
+  label: z.string().min(1).max(40),
+  formula: z.string().min(1).max(200),
+  format: z.enum(CALC_FORMATS).catch("number"),
+  // shading: true = higher is better, false = lower is better, null = no shading
+  higher_is_better: z.boolean().nullable().catch(null).default(null),
 });
 
 const ValueSchema = z.object({
@@ -23,6 +37,7 @@ export const SpecSchema = z.object({
   rows: z.array(z.string()).max(3).default([]),
   columns: z.array(z.string()).max(2).default([]),
   values: z.array(ValueSchema).max(6).default([]),
+  calcs: z.array(CalcSchema).max(8).default([]),
   sort: z.array(z.object({ by: z.string(), dir: z.enum(["asc", "desc"]) })).max(3).default([]),
   limit: z.number().int().min(1).max(5000).default(100),
   chart: z
@@ -40,9 +55,11 @@ export const SpecSchema = z.object({
 
 export type PivotSpec = z.infer<typeof SpecSchema>;
 export type Filter = z.infer<typeof FilterSchema>;
+export type Calc = z.infer<typeof CalcSchema>;
+export type CalcFormat = Calc["format"];
 export type Mode = (typeof MODES)[number];
 
-export const LIMITS = { rows: 3, columns: 2, values: 6 } as const;
+export const LIMITS = { rows: 3, columns: 2, values: 6, calcs: 8 } as const;
 
 export function defaultSpec(season = "2025-26"): PivotSpec {
   return SpecSchema.parse({

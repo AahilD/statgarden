@@ -39,8 +39,40 @@ datasets:
       filters:
         - { field: season, op: in, value: ["2025-26"] }
         - { field: season_type, op: in, value: ["Regular Season"] }
+  - id: team_game
+    label: Team games
+    grain: one row per team per game
+    table: fact_team_game
+    modes: [total, per_game, per_100]
+  - id: shots
+    label: Shots
+    grain: one row per shot attempt
+    table: fact_shot
+    modes: [total]
+  - id: player_season
+    label: Player seasons
+    grain: one row per player per season, with NBA.com's season-only tracking, defended shots and hustle
+    table: fact_player_season
+    games: gp
+    modes: [total, per_game, per_36]
+  - id: lineups
+    label: Lineups
+    grain: one row per 2-man or 5-man lineup per team per season
+    table: fact_lineup
+    games: gp
+    modes: [total, per_game, per_36, per_100]
+  - id: play_types
+    label: Play types
+    grain: one row per player, season, play type and side (offense or defense)
+    table: fact_play_type
+    modes: [total, per_100]
+  - id: matchups
+    label: Matchups
+    grain: one row per defender, per player guarded, per game
+    table: fact_matchup
+    modes: [total]
 
-groups: [Player, Team, Game, Context, Box score, Shooting, Advanced]
+groups: [Player, Team, Game, Context, Shot, Box score, Shooting, Shot zones, Advanced, Scoring, Hustle, Tracking, Defense, Opponent, Clutch, Lineup, Play type, Drives, Catch & shoot, Pull-ups, Touches, Passing, Rebounding, Defended shots, Matchup]
 
 fields:
   # ── Player ────────────────────────────────────────────────────────────────
@@ -62,34 +94,36 @@ fields:
     kind: dimension
     type: text
     expr: position
-    source: dim
-    description: Listed position (G, F, C, G-F, F-C).
+    source: bio
+    description: Listed position that season (G, F, C, G-F, F-C).
 
   - id: age_bucket
-    label: Age on game day
+    label: Age
     short: Age
     group: Player
     kind: dimension
     type: bucket
     bins: ["≤21", "22-24", "25-27", "28-30", "31-33", "34+"]
     expr: >-
-      CASE WHEN age_days / 365.25 < 22 THEN '≤21'
-           WHEN age_days / 365.25 < 25 THEN '22-24'
-           WHEN age_days / 365.25 < 28 THEN '25-27'
-           WHEN age_days / 365.25 < 31 THEN '28-30'
-           WHEN age_days / 365.25 < 34 THEN '31-33'
+      CASE WHEN age IS NULL THEN NULL
+           WHEN age < 22 THEN '≤21'
+           WHEN age < 25 THEN '22-24'
+           WHEN age < 28 THEN '25-27'
+           WHEN age < 31 THEN '28-30'
+           WHEN age < 34 THEN '31-33'
            ELSE '34+' END
-    source: dim
-    description: Age in years on the day of the game.
+    source: bio
+    description: Age that season, from NBA.com's player bio stats.
 
   - id: draft_round
     label: Draft round
     short: Draft rd
     group: Player
     kind: dimension
-    type: text
-    expr: "coalesce(cast(draft_round AS VARCHAR), 'Undrafted')"
-    source: dim
+    type: bucket
+    expr: "CASE WHEN draft_round = 1 THEN '1st round' WHEN draft_round = 2 THEN '2nd round' ELSE 'Undrafted' END"
+    bins: [1st round, 2nd round, Undrafted]
+    source: bio
     description: Round drafted in, or Undrafted.
 
   - id: is_starter
@@ -101,7 +135,8 @@ fields:
     bins: [Starter, Bench]
     expr: "CASE WHEN is_starter THEN 'Starter' ELSE 'Bench' END"
     source: box_v3
-    description: Whether the player started the game. Not in LeagueGameLog; needs box scores.
+    datasets: [player_game]
+    description: Whether the player started the game (from the box score).
 
   # ── Team ──────────────────────────────────────────────────────────────────
   - id: team
@@ -133,7 +168,7 @@ fields:
     kind: dimension
     type: text
     expr: conference
-    source: dim
+    source: team_info
     description: East or West (the player's team).
 
   - id: opp_conference
@@ -143,7 +178,7 @@ fields:
     kind: dimension
     type: text
     expr: opp_conference
-    source: dim
+    source: team_info
     description: Whether the opponent is East or West.
 
   # ── Game ──────────────────────────────────────────────────────────────────
@@ -208,8 +243,8 @@ fields:
     type: bucket
     bins: [Pre All-Star, Post All-Star]
     expr: "CASE WHEN is_post_all_star THEN 'Post All-Star' ELSE 'Pre All-Star' END"
-    source: dim
-    description: Needs the All-Star date per season in dim_season.
+    source: schedule
+    description: Whether the game was after that season's All-Star game.
 
   - id: game_number_bucket
     label: Team game number
@@ -318,19 +353,20 @@ fields:
     modes: [total]
     format: "d"
     higher_is_better: true
+    datasets: [player_game, team_game, player_season, lineups]
     source: gamelog
     description: Number of games in the group.
 
   - { id: min,  label: Minutes,            short: MIN, group: Box score, kind: measure, agg: sum, expr: min,  modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Minutes played. }
-  - { id: pts,  label: Points,             short: PTS, group: Box score, kind: measure, agg: sum, expr: pts,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Points scored. }
-  - { id: reb,  label: Rebounds,           short: REB, group: Box score, kind: measure, agg: sum, expr: reb,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Total rebounds. }
-  - { id: oreb, label: Offensive rebounds, short: OREB, group: Box score, kind: measure, agg: sum, expr: oreb, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Offensive rebounds. }
-  - { id: dreb, label: Defensive rebounds, short: DREB, group: Box score, kind: measure, agg: sum, expr: dreb, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Defensive rebounds. }
-  - { id: ast,  label: Assists,            short: AST, group: Box score, kind: measure, agg: sum, expr: ast,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Assists. }
-  - { id: stl,  label: Steals,             short: STL, group: Box score, kind: measure, agg: sum, expr: stl,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Steals. }
-  - { id: blk,  label: Blocks,             short: BLK, group: Box score, kind: measure, agg: sum, expr: blk,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Blocks. }
-  - { id: tov,  label: Turnovers,          short: TOV, group: Box score, kind: measure, agg: sum, expr: tov,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: false, source: gamelog, description: Turnovers. }
-  - { id: pf,   label: Personal fouls,     short: PF,  group: Box score, kind: measure, agg: sum, expr: pf,   modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: false, source: gamelog, description: Personal fouls. }
+  - { id: pts,  label: Points,             short: PTS, group: Box score, kind: measure, agg: sum, expr: pts,  modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Points scored. }
+  - { id: reb,  label: Rebounds,           short: REB, group: Box score, kind: measure, agg: sum, expr: reb,  modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Total rebounds. }
+  - { id: oreb, label: Offensive rebounds, short: OREB, group: Box score, kind: measure, agg: sum, expr: oreb, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Offensive rebounds. }
+  - { id: dreb, label: Defensive rebounds, short: DREB, group: Box score, kind: measure, agg: sum, expr: dreb, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Defensive rebounds. }
+  - { id: ast,  label: Assists,            short: AST, group: Box score, kind: measure, agg: sum, expr: ast,  modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Assists. }
+  - { id: stl,  label: Steals,             short: STL, group: Box score, kind: measure, agg: sum, expr: stl,  modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Steals. }
+  - { id: blk,  label: Blocks,             short: BLK, group: Box score, kind: measure, agg: sum, expr: blk,  modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true,  source: gamelog, description: Blocks. }
+  - { id: tov,  label: Turnovers,          short: TOV, group: Box score, kind: measure, agg: sum, expr: tov,  modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: false, source: gamelog, description: Turnovers. }
+  - { id: pf,   label: Personal fouls,     short: PF,  group: Box score, kind: measure, agg: sum, expr: pf,   modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: false, source: gamelog, description: Personal fouls. }
   - { id: plus_minus, label: Plus-minus,   short: "+/-", group: Box score, kind: measure, agg: sum, expr: plus_minus, modes: [per_game, total], default_mode: per_game, format: "+.1f", higher_is_better: true, source: gamelog, description: Team point margin while the player was on the floor. }
 
   - id: double_doubles
@@ -345,6 +381,7 @@ fields:
     modes: [total]
     format: "d"
     higher_is_better: true
+    datasets: [player_game]
     source: gamelog
     description: Games with 10+ in at least two of points, rebounds, assists, steals, blocks.
 
@@ -360,6 +397,7 @@ fields:
     modes: [total]
     format: "d"
     higher_is_better: true
+    datasets: [player_game]
     source: gamelog
     description: Games with 10+ in at least three of points, rebounds, assists, steals, blocks.
 
@@ -376,16 +414,17 @@ fields:
     default_mode: per_game
     format: ".1f"
     higher_is_better: true
+    datasets: [player_game]
     source: gamelog
     description: John Hollinger's single-game productivity score. Roughly 10 is average, 40 is outstanding.
 
   # ── Shooting (makes/attempts are summable; % are ratios) ──────────────────
-  - { id: fgm,  label: Field goals made,      short: FGM, group: Shooting, kind: measure, agg: sum, expr: fgm,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: gamelog, description: Field goals made. }
-  - { id: fga,  label: Field goal attempts,   short: FGA, group: Shooting, kind: measure, agg: sum, expr: fga,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", source: gamelog, description: Field goals attempted. }
-  - { id: fg3m, label: 3-pointers made,       short: 3PM, group: Shooting, kind: measure, agg: sum, expr: fg3m, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: gamelog, description: Three-pointers made. }
-  - { id: fg3a, label: 3-point attempts,      short: 3PA, group: Shooting, kind: measure, agg: sum, expr: fg3a, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", source: gamelog, description: Three-pointers attempted. }
-  - { id: ftm,  label: Free throws made,      short: FTM, group: Shooting, kind: measure, agg: sum, expr: ftm,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: gamelog, description: Free throws made. }
-  - { id: fta,  label: Free throw attempts,   short: FTA, group: Shooting, kind: measure, agg: sum, expr: fta,  modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", source: gamelog, description: Free throws attempted. }
+  - { id: fgm,  label: Field goals made,      short: FGM, group: Shooting, kind: measure, agg: sum, expr: fgm,  modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: gamelog, description: Field goals made. }
+  - { id: fga,  label: Field goal attempts,   short: FGA, group: Shooting, kind: measure, agg: sum, expr: fga,  modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", source: gamelog, description: Field goals attempted. }
+  - { id: fg3m, label: 3-pointers made,       short: 3PM, group: Shooting, kind: measure, agg: sum, expr: fg3m, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: gamelog, description: Three-pointers made. }
+  - { id: fg3a, label: 3-point attempts,      short: 3PA, group: Shooting, kind: measure, agg: sum, expr: fg3a, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", source: gamelog, description: Three-pointers attempted. }
+  - { id: ftm,  label: Free throws made,      short: FTM, group: Shooting, kind: measure, agg: sum, expr: ftm,  modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: gamelog, description: Free throws made. }
+  - { id: fta,  label: Free throw attempts,   short: FTA, group: Shooting, kind: measure, agg: sum, expr: fta,  modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", source: gamelog, description: Free throws attempted. }
 
   - id: fg_pct
     label: Field goal %
@@ -490,14 +529,421 @@ fields:
     source: gamelog
     description: Assists per turnover.
 
-  # ── Advanced (per-game rates from V3 box scores) ──────────────────────────
-  # These arrive as per-game rates, so they're averaged weighted by minutes.
-  # Exact versions need possessions; revisit once box_v3 is loaded.
-  - { id: usg_pct, label: Usage %,          short: USG%,  group: Advanced, kind: measure, agg: weighted_avg, expr: usg_pct, weight: min, format: ".1%", source: box_v3, description: Share of team plays used by the player while on the floor. }
-  - { id: off_rtg, label: Offensive rating, short: ORTG,  group: Advanced, kind: measure, agg: weighted_avg, expr: off_rtg, weight: min, format: ".1f", higher_is_better: true,  source: box_v3, description: Team points per 100 possessions with the player on the floor. }
-  - { id: def_rtg, label: Defensive rating, short: DRTG,  group: Advanced, kind: measure, agg: weighted_avg, expr: def_rtg, weight: min, format: ".1f", higher_is_better: false, source: box_v3, description: Opponent points per 100 possessions with the player on the floor. }
-  - { id: net_rtg, label: Net rating,       short: NET,   group: Advanced, kind: measure, agg: weighted_avg, expr: net_rtg, weight: min, format: "+.1f", higher_is_better: true, source: box_v3, description: Offensive minus defensive rating. }
-  - { id: ast_pct, label: Assist %,         short: AST%,  group: Advanced, kind: measure, agg: weighted_avg, expr: ast_pct, weight: min, format: ".1%", higher_is_better: true,  source: box_v3, description: Share of teammate baskets the player assisted while on the floor. }
-  - { id: reb_pct, label: Rebound %,        short: REB%,  group: Advanced, kind: measure, agg: weighted_avg, expr: reb_pct, weight: min, format: ".1%", higher_is_better: true,  source: box_v3, description: Share of available rebounds the player grabbed while on the floor. }
-  - { id: pace,    label: Pace,             short: PACE,  group: Advanced, kind: measure, agg: weighted_avg, expr: pace,    weight: min, format: ".1f", source: box_v3, description: Possessions per 48 minutes while the player was on the floor. }
-  - { id: pie,     label: PIE,              short: PIE,   group: Advanced, kind: measure, agg: weighted_avg, expr: pie,     weight: min, format: ".1%", higher_is_better: true,  source: box_v3, description: NBA.com Player Impact Estimate. }
+
+  - { id: tov_pct, label: Turnover %, short: TOV%, group: Shooting, kind: measure, agg: ratio, requires: [tov, fga, fta], formula: "tov / nullif(fga + 0.44 * fta + tov, 0)", format: ".1%", higher_is_better: false, source: gamelog, description: Turnovers per play (shots + free throw trips + turnovers). }
+  - { id: pts_per_shot, label: Points per shot, short: PTS/FGA, group: Shooting, kind: measure, agg: ratio, requires: [pts, fga], formula: "pts / nullif(fga, 0)", format: ".2f", higher_is_better: true, source: gamelog, description: Points scored per field goal attempt (free throws count toward points outside the Shots dataset). }
+
+  # ── More player info (from season bio stats and the player index) ─────────
+  - { id: height_bucket, label: Height, short: Ht, group: Player, kind: dimension, type: bucket, bins: ["Under 6'3", "6'3-6'6", "6'7-6'9", "6'10+"], expr: "CASE WHEN height_in IS NULL THEN NULL WHEN height_in < 75 THEN 'Under 6''3' WHEN height_in < 79 THEN '6''3-6''6' WHEN height_in < 82 THEN '6''7-6''9' ELSE '6''10+' END", source: bio, description: Listed height that season. }
+  - { id: draft_pick, label: Draft pick, short: Pick, group: Player, kind: dimension, type: bucket, bins: [Top 3, "4-10", "11-30", 2nd round, Undrafted], expr: "CASE WHEN draft_number IS NULL OR draft_round IS NULL THEN 'Undrafted' WHEN draft_round = 2 THEN '2nd round' WHEN draft_number <= 3 THEN 'Top 3' WHEN draft_number <= 10 THEN '4-10' ELSE '11-30' END", datasets: [player_game, player_season], source: bio, description: Where the player was picked. }
+  - { id: draft_year, label: Draft class, short: Draft, group: Player, kind: dimension, type: text, expr: "coalesce(cast(draft_year AS VARCHAR), 'Undrafted')", datasets: [player_game, player_season], source: bio, description: Year the player was drafted. }
+  - { id: from_usa, label: USA / international, short: Origin, group: Player, kind: dimension, type: bucket, bins: [USA, International], expr: "CASE WHEN country IS NULL THEN NULL WHEN country = 'USA' THEN 'USA' ELSE 'International' END", datasets: [player_game, player_season], source: bio, description: Whether the player is from the USA. }
+  - { id: country, label: Country, short: Country, group: Player, kind: dimension, type: text, expr: country, datasets: [player_game, player_season], source: bio, description: Country the player is from. }
+  - { id: college, label: College, short: College, group: Player, kind: dimension, type: text, expr: college, datasets: [player_game, player_season], source: bio, description: Last school or club before the NBA. }
+
+  # ── Shot (Shots dataset) ──────────────────────────────────────────────────
+  - { id: shot_zone, label: Shot zone, short: Zone, group: Shot, kind: dimension, type: bucket, bins: [Restricted Area, Paint (non-RA), Mid-Range, Corner 3, Above the Break 3, Backcourt], expr: shot_zone, datasets: [shots], source: shots, description: Where the shot was taken from. }
+  - { id: shot_area, label: Side of the floor, short: Side, group: Shot, kind: dimension, type: bucket, bins: [Left Side, Left Side Center, Center, Right Side Center, Right Side, Back Court], expr: shot_area, datasets: [shots], source: shots, description: Left, centre or right. }
+  - { id: shot_distance_bucket, label: Shot distance, short: Dist, group: Shot, kind: dimension, type: bucket, bins: ["0-3 ft", "4-9 ft", "10-15 ft", "16-22 ft", "23-26 ft", "27-30 ft", "31+ ft"], expr: "CASE WHEN shot_distance <= 3 THEN '0-3 ft' WHEN shot_distance <= 9 THEN '4-9 ft' WHEN shot_distance <= 15 THEN '10-15 ft' WHEN shot_distance <= 22 THEN '16-22 ft' WHEN shot_distance <= 26 THEN '23-26 ft' WHEN shot_distance <= 30 THEN '27-30 ft' ELSE '31+ ft' END", datasets: [shots], source: shots, description: How far from the basket, in feet. }
+  - { id: shot_kind, label: Shot type, short: Type, group: Shot, kind: dimension, type: bucket, bins: [Dunk, Layup, Tip / putback, Hook, Floater, Jump shot], expr: shot_kind, datasets: [shots], source: shots, description: Dunk, layup, jumper and so on (grouped from NBA.com's action type). }
+  - { id: action_type, label: Shot (detailed), short: Action, group: Shot, kind: dimension, type: text, expr: action_type, datasets: [shots], source: shots, description: NBA.com's detailed shot description, e.g. Pullup Jump Shot. }
+  - { id: shot_value, label: 2 or 3, short: 2/3, group: Shot, kind: dimension, type: bucket, bins: [2PT, 3PT], expr: "CASE WHEN fg3a = 1 THEN '3PT' ELSE '2PT' END", datasets: [shots], source: shots, description: Two-pointer or three-pointer. }
+  - { id: shot_result, label: Made / missed, short: Result, group: Shot, kind: dimension, type: bucket, bins: [Made, Missed], expr: "CASE WHEN fgm = 1 THEN 'Made' ELSE 'Missed' END", datasets: [shots], source: shots, description: Whether the shot went in. }
+  - { id: period, label: Quarter, short: Qtr, group: Shot, kind: dimension, type: bucket, bins: [Q1, Q2, Q3, Q4, OT], expr: "CASE WHEN period <= 4 THEN 'Q' || period ELSE 'OT' END", datasets: [shots], source: shots, description: Quarter the shot was taken in. }
+  - { id: clock_bucket, label: Time left in quarter, short: Clock, group: Shot, kind: dimension, type: bucket, bins: ["9-12 min", "6-9 min", "3-6 min", "1-3 min", "Last minute"], expr: "CASE WHEN clock_seconds > 540 THEN '9-12 min' WHEN clock_seconds > 360 THEN '6-9 min' WHEN clock_seconds > 180 THEN '3-6 min' WHEN clock_seconds > 60 THEN '1-3 min' ELSE 'Last minute' END", datasets: [shots], source: shots, description: Game clock when the shot went up. }
+
+  # ── Shot zones (player and team games, from the shot chart) ──────────────
+  - { id: charted_fga, label: Charted shots, short: Charted, group: Shot zones, kind: measure, agg: sum, expr: charted_fga, hidden: true, format: ".0f", source: shots, description: Shots on the shot chart. }
+  - { id: shot_distance_sum, label: Total shot distance, short: Dist sum, group: Shot zones, kind: measure, agg: sum, expr: shot_distance_sum, hidden: true, format: ".0f", source: shots, description: Building block for average shot distance. }
+  - { id: avg_shot_distance, label: Average shot distance, short: Avg dist, group: Shot zones, kind: measure, agg: ratio, requires: [shot_distance_sum, charted_fga], formula: "shot_distance_sum / nullif(charted_fga, 0)", format: ".1f", source: shots, description: Average distance of field goal attempts, in feet. }
+  - { id: ra_fgm, label: "Restricted area makes", short: "RA FGM", group: Shot zones, kind: measure, agg: sum, expr: ra_fgm, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: shots, description: "Shots made at the rim (restricted area)." }
+  - { id: ra_fga, label: "Restricted area attempts", short: "RA FGA", group: Shot zones, kind: measure, agg: sum, expr: ra_fga, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", datasets: [player_game, team_game], source: shots, description: "Shots taken at the rim (restricted area)." }
+  - { id: ra_pct, label: "Restricted area FG%", short: "RA FG%", group: Shot zones, kind: measure, agg: ratio, requires: [ra_fgm, ra_fga], formula: "ra_fgm / nullif(ra_fga, 0)", format: ".1%", higher_is_better: true, source: shots, description: "Shooting percentage at the rim (restricted area)." }
+  - { id: ra_share, label: "Restricted area share of shots", short: "RA %FGA", group: Shot zones, kind: measure, agg: ratio, requires: [ra_fga, charted_fga], formula: "ra_fga / nullif(charted_fga, 0)", format: ".1%", source: shots, description: "Share of all shots taken at the rim (restricted area)." }
+  - { id: paint_fgm, label: "Paint (non-RA) makes", short: "Paint FGM", group: Shot zones, kind: measure, agg: sum, expr: paint_fgm, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: shots, description: "Shots made in the paint outside the restricted area." }
+  - { id: paint_fga, label: "Paint (non-RA) attempts", short: "Paint FGA", group: Shot zones, kind: measure, agg: sum, expr: paint_fga, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", datasets: [player_game, team_game], source: shots, description: "Shots taken in the paint outside the restricted area." }
+  - { id: paint_pct, label: "Paint (non-RA) FG%", short: "Paint FG%", group: Shot zones, kind: measure, agg: ratio, requires: [paint_fgm, paint_fga], formula: "paint_fgm / nullif(paint_fga, 0)", format: ".1%", higher_is_better: true, source: shots, description: "Shooting percentage in the paint outside the restricted area." }
+  - { id: paint_share, label: "Paint (non-RA) share of shots", short: "Paint %FGA", group: Shot zones, kind: measure, agg: ratio, requires: [paint_fga, charted_fga], formula: "paint_fga / nullif(charted_fga, 0)", format: ".1%", source: shots, description: "Share of all shots taken in the paint outside the restricted area." }
+  - { id: mid_fgm, label: "Mid-range makes", short: "Mid FGM", group: Shot zones, kind: measure, agg: sum, expr: mid_fgm, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: shots, description: "Shots made from mid-range." }
+  - { id: mid_fga, label: "Mid-range attempts", short: "Mid FGA", group: Shot zones, kind: measure, agg: sum, expr: mid_fga, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", datasets: [player_game, team_game], source: shots, description: "Shots taken from mid-range." }
+  - { id: mid_pct, label: "Mid-range FG%", short: "Mid FG%", group: Shot zones, kind: measure, agg: ratio, requires: [mid_fgm, mid_fga], formula: "mid_fgm / nullif(mid_fga, 0)", format: ".1%", higher_is_better: true, source: shots, description: "Shooting percentage from mid-range." }
+  - { id: mid_share, label: "Mid-range share of shots", short: "Mid %FGA", group: Shot zones, kind: measure, agg: ratio, requires: [mid_fga, charted_fga], formula: "mid_fga / nullif(charted_fga, 0)", format: ".1%", source: shots, description: "Share of all shots taken from mid-range." }
+  - { id: corner3_fgm, label: "Corner 3 makes", short: "C3 FGM", group: Shot zones, kind: measure, agg: sum, expr: corner3_fgm, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: shots, description: "Shots made from the corners." }
+  - { id: corner3_fga, label: "Corner 3 attempts", short: "C3 FGA", group: Shot zones, kind: measure, agg: sum, expr: corner3_fga, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", datasets: [player_game, team_game], source: shots, description: "Shots taken from the corners." }
+  - { id: corner3_pct, label: "Corner 3 FG%", short: "C3 FG%", group: Shot zones, kind: measure, agg: ratio, requires: [corner3_fgm, corner3_fga], formula: "corner3_fgm / nullif(corner3_fga, 0)", format: ".1%", higher_is_better: true, source: shots, description: "Shooting percentage from the corners." }
+  - { id: corner3_share, label: "Corner 3 share of shots", short: "C3 %FGA", group: Shot zones, kind: measure, agg: ratio, requires: [corner3_fga, charted_fga], formula: "corner3_fga / nullif(charted_fga, 0)", format: ".1%", source: shots, description: "Share of all shots taken from the corners." }
+  - { id: ab3_fgm, label: "Above-the-break 3 makes", short: "AB3 FGM", group: Shot zones, kind: measure, agg: sum, expr: ab3_fgm, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: shots, description: "Shots made from above the break." }
+  - { id: ab3_fga, label: "Above-the-break 3 attempts", short: "AB3 FGA", group: Shot zones, kind: measure, agg: sum, expr: ab3_fga, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", datasets: [player_game, team_game], source: shots, description: "Shots taken from above the break." }
+  - { id: ab3_pct, label: "Above-the-break 3 FG%", short: "AB3 FG%", group: Shot zones, kind: measure, agg: ratio, requires: [ab3_fgm, ab3_fga], formula: "ab3_fgm / nullif(ab3_fga, 0)", format: ".1%", higher_is_better: true, source: shots, description: "Shooting percentage from above the break." }
+  - { id: ab3_share, label: "Above-the-break 3 share of shots", short: "AB3 %FGA", group: Shot zones, kind: measure, agg: ratio, requires: [ab3_fga, charted_fga], formula: "ab3_fga / nullif(charted_fga, 0)", format: ".1%", source: shots, description: "Share of all shots taken from above the break." }
+  - { id: dunk_fgm, label: "Dunk makes", short: "Dunk FGM", group: Shot zones, kind: measure, agg: sum, expr: dunk_fgm, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: shots, description: "Shots made on dunks." }
+  - { id: dunk_fga, label: "Dunk attempts", short: "Dunk FGA", group: Shot zones, kind: measure, agg: sum, expr: dunk_fga, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", datasets: [player_game, team_game], source: shots, description: "Shots taken on dunks." }
+  - { id: dunk_pct, label: "Dunk FG%", short: "Dunk FG%", group: Shot zones, kind: measure, agg: ratio, requires: [dunk_fgm, dunk_fga], formula: "dunk_fgm / nullif(dunk_fga, 0)", format: ".1%", higher_is_better: true, source: shots, description: "Shooting percentage on dunks." }
+  - { id: dunk_share, label: "Dunk share of shots", short: "Dunk %FGA", group: Shot zones, kind: measure, agg: ratio, requires: [dunk_fga, charted_fga], formula: "dunk_fga / nullif(charted_fga, 0)", format: ".1%", source: shots, description: "Share of all shots taken on dunks." }
+
+  # ── Advanced (per-game rates from the V3 box scores) ──────────────────────
+  # These arrive as per-game rates, so they're averaged, weighted by possessions
+  # (ratings) or minutes (the rest). For ratings that's exact: rating × possessions = points × 100.
+  - { id: poss, label: Possessions, short: POSS, group: Advanced, kind: measure, agg: sum, expr: poss, modes: [per_game, total], default_mode: per_game, format: ".1f", source: box_v3, description: Possessions played (the player's while on the floor; the team's for team games). }
+  - { id: off_rtg, label: Offensive rating, short: ORTG, group: Advanced, kind: measure, agg: weighted_avg, expr: off_rtg, weight: poss, format: ".1f", higher_is_better: true, source: box_v3, description: Team points per 100 possessions (with the player on the floor, for player games). }
+  - { id: def_rtg, label: Defensive rating, short: DRTG, group: Advanced, kind: measure, agg: weighted_avg, expr: def_rtg, weight: poss, format: ".1f", higher_is_better: false, source: box_v3, description: Opponent points per 100 possessions. }
+  - { id: net_rtg, label: Net rating, short: NET, group: Advanced, kind: measure, agg: weighted_avg, expr: net_rtg, weight: poss, format: "+.1f", higher_is_better: true, source: box_v3, description: Offensive minus defensive rating. }
+  - { id: pace, label: Pace, short: PACE, group: Advanced, kind: measure, agg: weighted_avg, expr: pace, weight: min, format: ".1f", source: box_v3, description: Possessions per 48 minutes. }
+  - { id: pie, label: PIE, short: PIE, group: Advanced, kind: measure, agg: weighted_avg, expr: pie, weight: min, format: ".1%", higher_is_better: true, source: box_v3, description: NBA.com Player Impact Estimate, the share of game events the player (or team) was part of. }
+  - { id: usg_pct, label: Usage %, short: USG%, group: Advanced, kind: measure, agg: weighted_avg, expr: usg_pct, weight: min, format: ".1%", datasets: [player_game], source: box_v3, description: Share of team plays used by the player while on the floor. }
+  - { id: ast_pct, label: Assist %, short: AST%, group: Advanced, kind: measure, agg: weighted_avg, expr: ast_pct, weight: min, format: ".1%", higher_is_better: true, datasets: [player_game, lineups], source: box_v3, description: Share of teammate baskets the player assisted while on the floor. }
+  - { id: ast_ratio, label: Assist ratio, short: AST RAT, group: Advanced, kind: measure, agg: weighted_avg, expr: ast_ratio, weight: min, format: ".1f", higher_is_better: true, datasets: [player_game], source: box_v3, description: Assists per 100 of the player's possessions. }
+  - { id: tov_ratio, label: Turnover ratio, short: TO RAT, group: Advanced, kind: measure, agg: weighted_avg, expr: tov_ratio, weight: min, format: ".1f", higher_is_better: false, datasets: [player_game], source: box_v3, description: Turnovers per 100 of the player's possessions. }
+  - { id: oreb_pct, label: Offensive rebound %, short: OREB%, group: Advanced, kind: measure, agg: weighted_avg, expr: oreb_pct, weight: min, format: ".1%", higher_is_better: true, datasets: [player_game, lineups], source: box_v3, description: Share of available offensive rebounds grabbed while on the floor. }
+  - { id: dreb_pct, label: Defensive rebound %, short: DREB%, group: Advanced, kind: measure, agg: weighted_avg, expr: dreb_pct, weight: min, format: ".1%", higher_is_better: true, datasets: [player_game, lineups], source: box_v3, description: Share of available defensive rebounds grabbed while on the floor. }
+  - { id: reb_pct, label: Rebound %, short: REB%, group: Advanced, kind: measure, agg: weighted_avg, expr: reb_pct, weight: min, format: ".1%", higher_is_better: true, datasets: [player_game, lineups], source: box_v3, description: Share of available rebounds grabbed while on the floor. }
+
+  # ── Scoring breakdown ─────────────────────────────────────────────────────
+  - { id: pts_paint, label: Points in the paint, short: PITP, group: Scoring, kind: measure, agg: sum, expr: pts_paint, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: box_v3, description: Points scored in the paint. }
+  - { id: pts_fast_break, label: Fast break points, short: FBPS, group: Scoring, kind: measure, agg: sum, expr: pts_fast_break, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: box_v3, description: Points on fast breaks. }
+  - { id: pts_2nd_chance, label: Second chance points, short: 2ND PTS, group: Scoring, kind: measure, agg: sum, expr: pts_2nd_chance, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: box_v3, description: Points after an offensive rebound. }
+  - { id: pts_off_tov, label: Points off turnovers, short: PTS OFF TO, group: Scoring, kind: measure, agg: sum, expr: pts_off_tov, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: box_v3, description: Points after the other team turned it over. }
+  - { id: ast_fgm, label: Assisted makes, short: AST FGM, group: Scoring, kind: measure, agg: sum, expr: ast_fgm, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", datasets: [player_game], source: box_v3, description: Made shots that were assisted. }
+  - { id: ast_fgm_pct, label: Assisted %, short: "%AST FGM", group: Scoring, kind: measure, agg: ratio, requires: [ast_fgm, fgm], formula: "ast_fgm / nullif(fgm, 0)", format: ".1%", datasets: [player_game], source: box_v3, description: Share of made shots that were assisted. }
+  - { id: fouls_drawn, label: Fouls drawn, short: PFD, group: Scoring, kind: measure, agg: sum, expr: fouls_drawn, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: box_v3, description: Personal fouls drawn. }
+  - { id: blk_against, label: Shots blocked, short: BLKA, group: Scoring, kind: measure, agg: sum, expr: blk_against, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: false, source: box_v3, description: Times the player's (or team's) shot was blocked. }
+
+  # ── Hustle ────────────────────────────────────────────────────────────────
+  - { id: deflections, label: Deflections, short: DEFL, group: Hustle, kind: measure, agg: sum, expr: deflections, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: hustle, description: Passes or dribbles tipped away. }
+  - { id: contested_shots, label: Contested shots, short: CONT, group: Hustle, kind: measure, agg: sum, expr: contested_shots, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: hustle, description: Opponent shots contested. }
+  - { id: contested_2pt, label: Contested 2s, short: CONT 2, group: Hustle, kind: measure, agg: sum, expr: contested_2pt, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: hustle, description: Opponent two-pointers contested. }
+  - { id: contested_3pt, label: Contested 3s, short: CONT 3, group: Hustle, kind: measure, agg: sum, expr: contested_3pt, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: hustle, description: Opponent three-pointers contested. }
+  - { id: charges_drawn, label: Charges drawn, short: CHG, group: Hustle, kind: measure, agg: sum, expr: charges_drawn, modes: [per_game, per_36, per_100, total], default_mode: total, format: ".1f", higher_is_better: true, source: hustle, description: Offensive fouls drawn by taking a charge. }
+  - { id: screen_ast, label: Screen assists, short: SCR AST, group: Hustle, kind: measure, agg: sum, expr: screen_ast, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: hustle, description: Screens that led straight to a made basket. }
+  - { id: screen_ast_pts, label: Screen assist points, short: SCR PTS, group: Hustle, kind: measure, agg: sum, expr: screen_ast_pts, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: hustle, description: Points from those baskets. }
+  - { id: loose_balls, label: Loose balls recovered, short: LBR, group: Hustle, kind: measure, agg: sum, expr: loose_balls, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: hustle, description: Loose balls recovered. }
+  - { id: box_outs, label: Box outs, short: BOX, group: Hustle, kind: measure, agg: sum, expr: box_outs, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: hustle, description: Box outs on shots. }
+
+  # ── Tracking (player-tracking cameras) ────────────────────────────────────
+  - { id: distance, label: Distance run, short: DIST, group: Tracking, kind: measure, agg: sum, expr: distance, modes: [per_game, per_36, total], default_mode: per_game, format: ".2f", source: tracking, description: Miles covered. }
+  - { id: speed, label: Average speed, short: SPD, group: Tracking, kind: measure, agg: weighted_avg, expr: speed, weight: min, format: ".2f", datasets: [player_game, player_season], source: tracking, description: Average speed in miles per hour while on the floor. }
+  - { id: touches, label: Touches, short: TCH, group: Tracking, kind: measure, agg: sum, expr: touches, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", source: tracking, description: Times the player (or team) had the ball. }
+  - { id: passes, label: Passes, short: PASS, group: Tracking, kind: measure, agg: sum, expr: passes, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", source: tracking, description: Passes made. }
+  - { id: secondary_ast, label: Secondary assists, short: 2ND AST, group: Tracking, kind: measure, agg: sum, expr: secondary_ast, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: tracking, description: The pass before the assist. }
+  - { id: ft_ast, label: Free throw assists, short: FT AST, group: Tracking, kind: measure, agg: sum, expr: ft_ast, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: tracking, description: Passes that led to a shooting foul and free throws. }
+  - { id: reb_chances, label: Rebound chances, short: REB CH, group: Tracking, kind: measure, agg: sum, expr: reb_chances, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", source: tracking, description: Times the player was near a rebound. }
+  - { id: reb_chance_pct, label: Rebound chance %, short: REB CH%, group: Tracking, kind: measure, agg: ratio, requires: [reb, reb_chances], formula: "reb / nullif(reb_chances, 0)", format: ".1%", higher_is_better: true, source: tracking, description: Rebounds grabbed out of rebound chances. }
+  - { id: pts_per_touch, label: Points per touch, short: PTS/TCH, group: Tracking, kind: measure, agg: ratio, requires: [pts, touches], formula: "pts / nullif(touches, 0)", format: ".3f", higher_is_better: true, source: tracking, description: Points scored per touch of the ball. }
+  - { id: contested_fgm, label: Contested makes, short: CFGM, group: Tracking, kind: measure, agg: sum, expr: contested_fgm, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", source: tracking, description: Made shots with a defender close. }
+  - { id: contested_fga, label: Contested attempts, short: CFGA, group: Tracking, kind: measure, agg: sum, expr: contested_fga, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", source: tracking, description: Shots taken with a defender close. }
+  - { id: contested_fg_pct, label: Contested FG%, short: CFG%, group: Tracking, kind: measure, agg: ratio, requires: [contested_fgm, contested_fga], formula: "contested_fgm / nullif(contested_fga, 0)", format: ".1%", higher_is_better: true, source: tracking, description: Shooting with a defender close. }
+  - { id: uncontested_fgm, label: Open makes, short: UFGM, group: Tracking, kind: measure, agg: sum, expr: uncontested_fgm, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", source: tracking, description: Made shots without a defender close. }
+  - { id: uncontested_fga, label: Open attempts, short: UFGA, group: Tracking, kind: measure, agg: sum, expr: uncontested_fga, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", source: tracking, description: Shots taken without a defender close. }
+  - { id: uncontested_fg_pct, label: Open FG%, short: UFG%, group: Tracking, kind: measure, agg: ratio, requires: [uncontested_fgm, uncontested_fga], formula: "uncontested_fgm / nullif(uncontested_fga, 0)", format: ".1%", higher_is_better: true, source: tracking, description: Shooting without a defender close. }
+  - { id: rim_def_fgm, label: Makes allowed at the rim, short: DFGM RIM, group: Tracking, kind: measure, agg: sum, expr: rim_def_fgm, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: false, source: tracking, description: Opponent makes at the rim with this defender there. }
+  - { id: rim_def_fga, label: Shots defended at the rim, short: DFGA RIM, group: Tracking, kind: measure, agg: sum, expr: rim_def_fga, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", source: tracking, description: Opponent shots at the rim with this defender there. }
+  - { id: rim_def_pct, label: Opponent FG% at the rim, short: DFG% RIM, group: Tracking, kind: measure, agg: ratio, requires: [rim_def_fgm, rim_def_fga], formula: "rim_def_fgm / nullif(rim_def_fga, 0)", format: ".1%", higher_is_better: false, source: tracking, description: How opponents shot at the rim against this defender. }
+
+  # ── Defense (matchup data: the players they guarded) ──────────────────────
+  - { id: matchup_min, label: Matchup minutes, short: MATCH MIN, group: Defense, kind: measure, agg: sum, expr: matchup_min, modes: [per_game, total], default_mode: per_game, format: ".1f", datasets: [player_game, matchups], source: box_matchups, description: Minutes spent guarding someone. }
+  - { id: matchup_poss, label: Matchup possessions, short: MATCH POSS, group: Defense, kind: measure, agg: sum, expr: matchup_poss, modes: [per_game, total], default_mode: per_game, format: ".1f", datasets: [player_game, matchups], source: box_matchups, description: Possessions spent guarding someone (partial possessions added up). }
+  - { id: matchup_pts, label: Points allowed, short: PTS ALW, group: Defense, kind: measure, agg: sum, expr: matchup_pts, modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [player_game, matchups], source: box_matchups, description: Points scored by the players they guarded. }
+  - { id: matchup_pts_per_100, label: Points allowed per 100 poss, short: PTS ALW/100, group: Defense, kind: measure, agg: ratio, requires: [matchup_pts, matchup_poss], formula: "100 * matchup_pts / nullif(matchup_poss, 0)", format: ".1f", higher_is_better: false, datasets: [player_game, matchups], source: box_matchups, description: Points allowed per 100 possessions guarded. }
+  - { id: matchup_fgm, label: Makes allowed, short: DFGM, group: Defense, kind: measure, agg: sum, expr: matchup_fgm, modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [player_game, matchups], source: box_matchups, description: Shots made by the players they guarded. }
+  - { id: matchup_fga, label: Shots defended, short: DFGA, group: Defense, kind: measure, agg: sum, expr: matchup_fga, modes: [per_game, total], default_mode: per_game, format: ".1f", datasets: [player_game, matchups], source: box_matchups, description: Shots taken by the players they guarded. }
+  - { id: matchup_fg_pct, label: Opponent FG% (guarded), short: DFG%, group: Defense, kind: measure, agg: ratio, requires: [matchup_fgm, matchup_fga], formula: "matchup_fgm / nullif(matchup_fga, 0)", format: ".1%", higher_is_better: false, datasets: [player_game, matchups], source: box_matchups, description: How the players they guarded shot. }
+  - { id: matchup_fg3m, label: Threes allowed, short: D3PM, group: Defense, kind: measure, agg: sum, expr: matchup_fg3m, modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [player_game, matchups], source: box_matchups, description: Threes made by the players they guarded. }
+  - { id: matchup_fg3a, label: Threes defended, short: D3PA, group: Defense, kind: measure, agg: sum, expr: matchup_fg3a, modes: [per_game, total], default_mode: per_game, format: ".1f", datasets: [player_game, matchups], source: box_matchups, description: Threes taken by the players they guarded. }
+  - { id: matchup_fg3_pct, label: Opponent 3P% (guarded), short: D3P%, group: Defense, kind: measure, agg: ratio, requires: [matchup_fg3m, matchup_fg3a], formula: "matchup_fg3m / nullif(matchup_fg3a, 0)", format: ".1%", higher_is_better: false, datasets: [player_game, matchups], source: box_matchups, description: How the players they guarded shot from three. }
+  - { id: switches_on, label: Switches, short: SWITCH, group: Defense, kind: measure, agg: sum, expr: switches_on, modes: [per_game, total], default_mode: per_game, format: ".1f", datasets: [player_game, matchups], source: box_matchups, description: Times they switched onto a new player. }
+
+  # ── Opponent (team games) ─────────────────────────────────────────────────
+  - { id: opp_pts, label: "Points allowed", short: "OPP PTS", group: Opponent, kind: measure, agg: sum, expr: opp_pts, modes: [per_game, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [team_game], source: gamelog, description: "The other team's PTS." }
+  - { id: opp_fgm, label: "Opponent FGM", short: "OPP FGM", group: Opponent, kind: measure, agg: sum, expr: opp_fgm, modes: [per_game, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [team_game], source: gamelog, description: "The other team's FGM." }
+  - { id: opp_fga, label: "Opponent FGA", short: "OPP FGA", group: Opponent, kind: measure, agg: sum, expr: opp_fga, modes: [per_game, per_100, total], default_mode: per_game, format: ".1f", datasets: [team_game], source: gamelog, description: "The other team's FGA." }
+  - { id: opp_fg3m, label: "Opponent 3PM", short: "OPP 3PM", group: Opponent, kind: measure, agg: sum, expr: opp_fg3m, modes: [per_game, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [team_game], source: gamelog, description: "The other team's 3PM." }
+  - { id: opp_fg3a, label: "Opponent 3PA", short: "OPP 3PA", group: Opponent, kind: measure, agg: sum, expr: opp_fg3a, modes: [per_game, per_100, total], default_mode: per_game, format: ".1f", datasets: [team_game], source: gamelog, description: "The other team's 3PA." }
+  - { id: opp_ftm, label: "Opponent FTM", short: "OPP FTM", group: Opponent, kind: measure, agg: sum, expr: opp_ftm, modes: [per_game, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [team_game], source: gamelog, description: "The other team's FTM." }
+  - { id: opp_fta, label: "Opponent FTA", short: "OPP FTA", group: Opponent, kind: measure, agg: sum, expr: opp_fta, modes: [per_game, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [team_game], source: gamelog, description: "The other team's FTA." }
+  - { id: opp_oreb, label: "Opponent OREB", short: "OPP OREB", group: Opponent, kind: measure, agg: sum, expr: opp_oreb, modes: [per_game, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [team_game], source: gamelog, description: "The other team's OREB." }
+  - { id: opp_dreb, label: "Opponent DREB", short: "OPP DREB", group: Opponent, kind: measure, agg: sum, expr: opp_dreb, modes: [per_game, per_100, total], default_mode: per_game, format: ".1f", datasets: [team_game], source: gamelog, description: "The other team's DREB." }
+  - { id: opp_reb, label: "Opponent REB", short: "OPP REB", group: Opponent, kind: measure, agg: sum, expr: opp_reb, modes: [per_game, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [team_game], source: gamelog, description: "The other team's REB." }
+  - { id: opp_ast, label: "Opponent AST", short: "OPP AST", group: Opponent, kind: measure, agg: sum, expr: opp_ast, modes: [per_game, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [team_game], source: gamelog, description: "The other team's AST." }
+  - { id: opp_stl, label: "Opponent STL", short: "OPP STL", group: Opponent, kind: measure, agg: sum, expr: opp_stl, modes: [per_game, per_100, total], default_mode: per_game, format: ".1f", datasets: [team_game], source: gamelog, description: "The other team's STL." }
+  - { id: opp_blk, label: "Opponent BLK", short: "OPP BLK", group: Opponent, kind: measure, agg: sum, expr: opp_blk, modes: [per_game, per_100, total], default_mode: per_game, format: ".1f", datasets: [team_game], source: gamelog, description: "The other team's BLK." }
+  - { id: opp_tov, label: "Opponent turnovers", short: "OPP TOV", group: Opponent, kind: measure, agg: sum, expr: opp_tov, modes: [per_game, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [team_game], source: gamelog, description: "The other team's TOV." }
+  - { id: opp_poss, label: "Opponent possessions", short: "OPP POSS", group: Opponent, kind: measure, agg: sum, expr: opp_poss, modes: [per_game, total], default_mode: per_game, format: ".1f", datasets: [team_game], source: gamelog, description: "The other team's POSS." }
+  - { id: opp_pts_paint, label: "Opponent points in the paint", short: "OPP PITP", group: Opponent, kind: measure, agg: sum, expr: opp_pts_paint, modes: [per_game, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [team_game], source: gamelog, description: "The other team's PITP." }
+  - { id: opp_pts_fast_break, label: "Opponent fast break points", short: "OPP FBPS", group: Opponent, kind: measure, agg: sum, expr: opp_pts_fast_break, modes: [per_game, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [team_game], source: gamelog, description: "The other team's FBPS." }
+  - { id: opp_fg_pct, label: "Opponent FG%", short: "OPP FG%", group: Opponent, kind: measure, agg: ratio, requires: [opp_fgm, opp_fga], formula: "opp_fgm / nullif(opp_fga, 0)", format: ".1%", higher_is_better: false, datasets: [team_game], source: gamelog, description: "Worked out from both teams' totals over the whole group." }
+  - { id: opp_fg3_pct, label: "Opponent 3P%", short: "OPP 3P%", group: Opponent, kind: measure, agg: ratio, requires: [opp_fg3m, opp_fg3a], formula: "opp_fg3m / nullif(opp_fg3a, 0)", format: ".1%", higher_is_better: false, datasets: [team_game], source: gamelog, description: "Worked out from both teams' totals over the whole group." }
+  - { id: opp_efg_pct, label: "Opponent eFG%", short: "OPP eFG%", group: Opponent, kind: measure, agg: ratio, requires: [opp_fgm, opp_fg3m, opp_fga], formula: "(opp_fgm + 0.5 * opp_fg3m) / nullif(opp_fga, 0)", format: ".1%", higher_is_better: false, datasets: [team_game], source: gamelog, description: "Worked out from both teams' totals over the whole group." }
+  - { id: opp_tov_pct, label: "Opponent turnover %", short: "OPP TOV%", group: Opponent, kind: measure, agg: ratio, requires: [opp_tov, opp_fga, opp_fta], formula: "opp_tov / nullif(opp_fga + 0.44 * opp_fta + opp_tov, 0)", format: ".1%", higher_is_better: true, datasets: [team_game], source: gamelog, description: "Worked out from both teams' totals over the whole group." }
+  - { id: opp_ft_rate, label: "Opponent free throw rate", short: "OPP FTr", group: Opponent, kind: measure, agg: ratio, requires: [opp_fta, opp_fga], formula: "opp_fta / nullif(opp_fga, 0)", format: ".3f", higher_is_better: false, datasets: [team_game], source: gamelog, description: "Worked out from both teams' totals over the whole group." }
+  - { id: team_oreb_pct, label: "Offensive rebound % (team)", short: "TM OREB%", group: Opponent, kind: measure, agg: ratio, requires: [oreb, opp_dreb], formula: "oreb / nullif(oreb + opp_dreb, 0)", format: ".1%", higher_is_better: true, datasets: [team_game], source: gamelog, description: "Worked out from both teams' totals over the whole group." }
+  - { id: team_dreb_pct, label: "Defensive rebound % (team)", short: "TM DREB%", group: Opponent, kind: measure, agg: ratio, requires: [dreb, opp_oreb], formula: "dreb / nullif(dreb + opp_oreb, 0)", format: ".1%", higher_is_better: true, datasets: [team_game], source: gamelog, description: "Worked out from both teams' totals over the whole group." }
+
+  # ── Clutch and garbage time (play-by-play) ─────────────────────────────────
+  - id: had_clutch
+    label: Close finish
+    short: Clutch game
+    group: Clutch
+    kind: dimension
+    type: bucket
+    bins: [Clutch game, No clutch time]
+    expr: "CASE WHEN had_clutch THEN 'Clutch game' ELSE 'No clutch time' END"
+    source: pbp
+    datasets: [player_game, team_game]
+    description: Whether the game had clutch time (last 5 minutes of the 4th or OT, score within 5). Blank play-by-play counts as no.
+
+  - id: had_garbage
+    label: Garbage time in game
+    short: Garbage
+    group: Clutch
+    kind: dimension
+    type: bucket
+    bins: [Had garbage time, No garbage time]
+    expr: "CASE WHEN had_garbage THEN 'Had garbage time' ELSE 'No garbage time' END"
+    source: pbp
+    datasets: [player_game, team_game]
+    description: Whether the 4th quarter hit a blowout (25+ with 9-12 min left, 20+ with 6-9, 15+ under 6). A rough rule, not an official one.
+
+  - { id: clutch_pts, label: "Clutch points", short: "CL PTS", group: Clutch, kind: measure, agg: sum, expr: "coalesce(clutch_pts, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "PTS in clutch time (last 5 min of the 4th or OT, score within 5), from play-by-play." }
+  - { id: clutch_fga, label: "Clutch FGA", short: "CL FGA", group: Clutch, kind: measure, agg: sum, expr: "coalesce(clutch_fga, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", datasets: [player_game, team_game], source: pbp, description: "FGA in clutch time (last 5 min of the 4th or OT, score within 5), from play-by-play." }
+  - { id: clutch_fgm, label: "Clutch FGM", short: "CL FGM", group: Clutch, kind: measure, agg: sum, expr: "coalesce(clutch_fgm, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "FGM in clutch time (last 5 min of the 4th or OT, score within 5), from play-by-play." }
+  - { id: clutch_fg3a, label: "Clutch 3PA", short: "CL 3PA", group: Clutch, kind: measure, agg: sum, expr: "coalesce(clutch_fg3a, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", datasets: [player_game, team_game], source: pbp, description: "3PA in clutch time (last 5 min of the 4th or OT, score within 5), from play-by-play." }
+  - { id: clutch_fg3m, label: "Clutch 3PM", short: "CL 3PM", group: Clutch, kind: measure, agg: sum, expr: "coalesce(clutch_fg3m, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "3PM in clutch time (last 5 min of the 4th or OT, score within 5), from play-by-play." }
+  - { id: clutch_fta, label: "Clutch FTA", short: "CL FTA", group: Clutch, kind: measure, agg: sum, expr: "coalesce(clutch_fta, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "FTA in clutch time (last 5 min of the 4th or OT, score within 5), from play-by-play." }
+  - { id: clutch_ftm, label: "Clutch FTM", short: "CL FTM", group: Clutch, kind: measure, agg: sum, expr: "coalesce(clutch_ftm, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "FTM in clutch time (last 5 min of the 4th or OT, score within 5), from play-by-play." }
+  - { id: clutch_reb, label: "Clutch rebounds", short: "CL REB", group: Clutch, kind: measure, agg: sum, expr: "coalesce(clutch_reb, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "REB in clutch time (last 5 min of the 4th or OT, score within 5), from play-by-play." }
+  - { id: clutch_tov, label: "Clutch turnovers", short: "CL TOV", group: Clutch, kind: measure, agg: sum, expr: "coalesce(clutch_tov, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [player_game, team_game], source: pbp, description: "TOV in clutch time (last 5 min of the 4th or OT, score within 5), from play-by-play." }
+  - { id: clutch_stl, label: "Clutch steals", short: "CL STL", group: Clutch, kind: measure, agg: sum, expr: "coalesce(clutch_stl, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "STL in clutch time (last 5 min of the 4th or OT, score within 5), from play-by-play." }
+  - { id: clutch_blk, label: "Clutch blocks", short: "CL BLK", group: Clutch, kind: measure, agg: sum, expr: "coalesce(clutch_blk, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "BLK in clutch time (last 5 min of the 4th or OT, score within 5), from play-by-play." }
+  - { id: clutch_fg_pct, label: "Clutch FG%", short: "CL FG%", group: Clutch, kind: measure, agg: ratio, requires: [clutch_fgm, clutch_fga], formula: "clutch_fgm / nullif(clutch_fga, 0)", format: ".1%", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "FG% in clutch time (last 5 min of the 4th or OT, score within 5)." }
+  - { id: clutch_fg3_pct, label: "Clutch 3P%", short: "CL 3P%", group: Clutch, kind: measure, agg: ratio, requires: [clutch_fg3m, clutch_fg3a], formula: "clutch_fg3m / nullif(clutch_fg3a, 0)", format: ".1%", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "3P% in clutch time (last 5 min of the 4th or OT, score within 5)." }
+  - { id: clutch_ts_pct, label: "Clutch TS%", short: "CL TS%", group: Clutch, kind: measure, agg: ratio, requires: [clutch_pts, clutch_fga, clutch_fta], formula: "clutch_pts / nullif(2 * (clutch_fga + 0.44 * clutch_fta), 0)", format: ".1%", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "True shooting in clutch time (last 5 min of the 4th or OT, score within 5)." }
+  - { id: garbage_pts, label: "Garbage-time points", short: "GA PTS", group: Clutch, kind: measure, agg: sum, expr: "coalesce(garbage_pts, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "PTS in garbage time (4th-quarter blowouts, rough rule), from play-by-play." }
+  - { id: garbage_fga, label: "Garbage-time FGA", short: "GA FGA", group: Clutch, kind: measure, agg: sum, expr: "coalesce(garbage_fga, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", datasets: [player_game, team_game], source: pbp, description: "FGA in garbage time (4th-quarter blowouts, rough rule), from play-by-play." }
+  - { id: garbage_fgm, label: "Garbage-time FGM", short: "GA FGM", group: Clutch, kind: measure, agg: sum, expr: "coalesce(garbage_fgm, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "FGM in garbage time (4th-quarter blowouts, rough rule), from play-by-play." }
+  - { id: garbage_fg3a, label: "Garbage-time 3PA", short: "GA 3PA", group: Clutch, kind: measure, agg: sum, expr: "coalesce(garbage_fg3a, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", datasets: [player_game, team_game], source: pbp, description: "3PA in garbage time (4th-quarter blowouts, rough rule), from play-by-play." }
+  - { id: garbage_fg3m, label: "Garbage-time 3PM", short: "GA 3PM", group: Clutch, kind: measure, agg: sum, expr: "coalesce(garbage_fg3m, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "3PM in garbage time (4th-quarter blowouts, rough rule), from play-by-play." }
+  - { id: garbage_fta, label: "Garbage-time FTA", short: "GA FTA", group: Clutch, kind: measure, agg: sum, expr: "coalesce(garbage_fta, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "FTA in garbage time (4th-quarter blowouts, rough rule), from play-by-play." }
+  - { id: garbage_ftm, label: "Garbage-time FTM", short: "GA FTM", group: Clutch, kind: measure, agg: sum, expr: "coalesce(garbage_ftm, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "FTM in garbage time (4th-quarter blowouts, rough rule), from play-by-play." }
+  - { id: garbage_reb, label: "Garbage-time rebounds", short: "GA REB", group: Clutch, kind: measure, agg: sum, expr: "coalesce(garbage_reb, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "REB in garbage time (4th-quarter blowouts, rough rule), from play-by-play." }
+  - { id: garbage_tov, label: "Garbage-time turnovers", short: "GA TOV", group: Clutch, kind: measure, agg: sum, expr: "coalesce(garbage_tov, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [player_game, team_game], source: pbp, description: "TOV in garbage time (4th-quarter blowouts, rough rule), from play-by-play." }
+  - { id: garbage_stl, label: "Garbage-time steals", short: "GA STL", group: Clutch, kind: measure, agg: sum, expr: "coalesce(garbage_stl, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "STL in garbage time (4th-quarter blowouts, rough rule), from play-by-play." }
+  - { id: garbage_blk, label: "Garbage-time blocks", short: "GA BLK", group: Clutch, kind: measure, agg: sum, expr: "coalesce(garbage_blk, 0)", modes: [per_game, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "BLK in garbage time (4th-quarter blowouts, rough rule), from play-by-play." }
+  - { id: garbage_fg_pct, label: "Garbage-time FG%", short: "GA FG%", group: Clutch, kind: measure, agg: ratio, requires: [garbage_fgm, garbage_fga], formula: "garbage_fgm / nullif(garbage_fga, 0)", format: ".1%", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "FG% in garbage time (4th-quarter blowouts, rough rule)." }
+  - { id: garbage_fg3_pct, label: "Garbage-time 3P%", short: "GA 3P%", group: Clutch, kind: measure, agg: ratio, requires: [garbage_fg3m, garbage_fg3a], formula: "garbage_fg3m / nullif(garbage_fg3a, 0)", format: ".1%", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "3P% in garbage time (4th-quarter blowouts, rough rule)." }
+  - { id: garbage_ts_pct, label: "Garbage-time TS%", short: "GA TS%", group: Clutch, kind: measure, agg: ratio, requires: [garbage_pts, garbage_fga, garbage_fta], formula: "garbage_pts / nullif(2 * (garbage_fga + 0.44 * garbage_fta), 0)", format: ".1%", higher_is_better: true, datasets: [player_game, team_game], source: pbp, description: "True shooting in garbage time (4th-quarter blowouts, rough rule)." }
+
+  # ── Records (season datasets) ─────────────────────────────────────────────
+  - { id: wins, label: "Wins", short: "W", group: "Box score", kind: measure, agg: sum, expr: wins, modes: [total], default_mode: total, format: "d", higher_is_better: true, datasets: [player_season, lineups], source: season_dash, description: "Games won." }
+  - { id: losses, label: "Losses", short: "L", group: "Box score", kind: measure, agg: sum, expr: losses, modes: [total], default_mode: total, format: "d", higher_is_better: false, datasets: [player_season, lineups], source: season_dash, description: "Games lost." }
+  - { id: win_pct, label: "Win %", short: "W%", group: "Box score", kind: measure, agg: ratio, requires: [wins, losses], formula: "wins / nullif(wins + losses, 0)", format: ".3f", higher_is_better: true, datasets: [player_season, lineups], source: season_dash, description: "Share of games won." }
+
+  # ── Lineups ───────────────────────────────────────────────────────────────
+  - id: lineup
+    label: "Lineup"
+    short: "Lineup"
+    group: "Lineup"
+    kind: dimension
+    type: text
+    key: lineup_id
+    expr: "lineup_name"
+    datasets: [lineups]
+    source: season_dash
+    description: "The players in the lineup, by initial and last name."
+
+  - id: lineup_size
+    label: "Lineup size"
+    short: "Size"
+    group: "Lineup"
+    kind: dimension
+    type: bucket
+    expr: "group_size || '-man'"
+    bins: ["2-man", "5-man"]
+    datasets: [lineups]
+    source: season_dash
+    description: "How many players are in the lineup. NBA.com gives 2-man and 5-man groups here."
+
+
+  # ── Play types (Synergy, season totals) ───────────────────────────────────
+  - id: play_type
+    label: "Play type"
+    short: "Play"
+    group: "Play type"
+    kind: dimension
+    type: text
+    expr: "play_type"
+    datasets: [play_types]
+    source: season_dash
+    description: "How the possession ended: spot up, isolation, pick & roll and so on (Synergy)."
+
+  - id: side
+    label: "Offense / defense"
+    short: "Side"
+    group: "Play type"
+    kind: dimension
+    type: bucket
+    expr: "side"
+    bins: ["Offense", "Defense"]
+    datasets: [play_types]
+    source: season_dash
+    description: "Offense = their own possessions; defense = possessions they defended."
+
+  - { id: ppp, label: "Points per possession", short: "PPP", group: "Play type", kind: measure, agg: ratio, requires: [pts, poss], formula: "pts / nullif(poss, 0)", format: ".3f", datasets: [play_types], source: season_dash, description: "Points scored (or allowed, on defense) per possession of that play type." }
+  - { id: scoring_poss, label: "Scoring possessions", short: "SCORE POSS", group: "Play type", kind: measure, agg: sum, expr: scoring_poss, modes: [total], default_mode: total, format: ".1f", datasets: [play_types], source: season_dash, description: "Possessions that ended in at least one point." }
+  - { id: score_pct, label: "Score %", short: "SCORE%", group: "Play type", kind: measure, agg: ratio, requires: [scoring_poss, poss], formula: "scoring_poss / nullif(poss, 0)", format: ".1%", datasets: [play_types], source: season_dash, description: "Share of possessions that scored." }
+  - { id: pt_tov_pct, label: "Turnover % (play type)", short: "TOV%", group: "Play type", kind: measure, agg: ratio, requires: [tov, poss], formula: "tov / nullif(poss, 0)", format: ".1%", datasets: [play_types], source: season_dash, description: "Share of possessions that ended in a turnover." }
+  - { id: shooting_fouls_drawn, label: "Shooting fouls", short: "SF", group: "Play type", kind: measure, agg: sum, expr: shooting_fouls_drawn, modes: [total], default_mode: total, format: ".1f", datasets: [play_types], source: season_dash, description: "Possessions that drew a shooting foul." }
+  - { id: sf_pct, label: "Shooting foul %", short: "SF%", group: "Play type", kind: measure, agg: ratio, requires: [shooting_fouls_drawn, poss], formula: "shooting_fouls_drawn / nullif(poss, 0)", format: ".1%", datasets: [play_types], source: season_dash, description: "Share of possessions that drew a shooting foul." }
+  - { id: play_type_percentile, label: "Play type percentile", short: "PCTL", group: "Play type", kind: measure, agg: weighted_avg, expr: play_type_percentile, weight: poss, format: ".0%", datasets: [play_types], source: season_dash, description: "NBA.com's percentile for points per possession on that play type (higher = better on offense, worse on defense). Averaged weighted by possessions." }
+
+  # ── Drives (season tracking) ──────────────────────────────────────────────
+  - { id: drives, label: "Drives", short: "DRV", group: "Drives", kind: measure, agg: sum, expr: drives, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Times they drove to the basket." }
+  - { id: drive_fgm, label: "Drive FGM", short: "DRV FGM", group: "Drives", kind: measure, agg: sum, expr: drive_fgm, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Shots made on drives." }
+  - { id: drive_fga, label: "Drive FGA", short: "DRV FGA", group: "Drives", kind: measure, agg: sum, expr: drive_fga, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Shots taken on drives." }
+  - { id: drive_ftm, label: "Drive FTM", short: "DRV FTM", group: "Drives", kind: measure, agg: sum, expr: drive_ftm, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Free throws made off drives." }
+  - { id: drive_fta, label: "Drive FTA", short: "DRV FTA", group: "Drives", kind: measure, agg: sum, expr: drive_fta, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Free throws taken off drives." }
+  - { id: drive_pts, label: "Drive points", short: "DRV PTS", group: "Drives", kind: measure, agg: sum, expr: drive_pts, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Points scored off drives." }
+  - { id: drive_passes, label: "Drive passes", short: "DRV PASS", group: "Drives", kind: measure, agg: sum, expr: drive_passes, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Passes out of drives." }
+  - { id: drive_ast, label: "Drive assists", short: "DRV AST", group: "Drives", kind: measure, agg: sum, expr: drive_ast, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Assists out of drives." }
+  - { id: drive_tov, label: "Drive turnovers", short: "DRV TOV", group: "Drives", kind: measure, agg: sum, expr: drive_tov, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [player_season], source: season_dash, description: "Turnovers on drives." }
+  - { id: drive_pf, label: "Drive fouls drawn", short: "DRV PF", group: "Drives", kind: measure, agg: sum, expr: drive_pf, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Fouls drawn on drives." }
+  - { id: drive_fg_pct, label: "Drive FG%", short: "DRV FG%", group: "Drives", kind: measure, agg: ratio, requires: [drive_fgm, drive_fga], formula: "drive_fgm / nullif(drive_fga, 0)", format: ".1%", higher_is_better: true, datasets: [player_season], source: season_dash, description: "FG% on drives." }
+  - { id: pts_per_drive, label: "Points per drive", short: "PTS/DRV", group: "Drives", kind: measure, agg: ratio, requires: [drive_pts, drives], formula: "drive_pts / nullif(drives, 0)", format: ".2f", higher_is_better: true, datasets: [player_season], source: season_dash, description: "Points scored per drive." }
+  - { id: drive_pass_pct, label: "Drive pass %", short: "DRV PASS%", group: "Drives", kind: measure, agg: ratio, requires: [drive_passes, drives], formula: "drive_passes / nullif(drives, 0)", format: ".1%", datasets: [player_season], source: season_dash, description: "Share of drives that ended in a pass." }
+  - { id: drive_tov_pct, label: "Drive turnover %", short: "DRV TOV%", group: "Drives", kind: measure, agg: ratio, requires: [drive_tov, drives], formula: "drive_tov / nullif(drives, 0)", format: ".1%", higher_is_better: false, datasets: [player_season], source: season_dash, description: "Share of drives that ended in a turnover." }
+
+  # ── Catch & shoot (season tracking) ─────────────────────────────────────────────
+  - { id: catch_shoot_fgm, label: "Catch & shoot FGM", short: "C&S FGM", group: "Catch & shoot", kind: measure, agg: sum, expr: catch_shoot_fgm, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Makes on catch-and-shoot jumpers (no dribble, 10+ ft)." }
+  - { id: catch_shoot_fga, label: "Catch & shoot FGA", short: "C&S FGA", group: "Catch & shoot", kind: measure, agg: sum, expr: catch_shoot_fga, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Attempts on catch-and-shoot jumpers (no dribble, 10+ ft)." }
+  - { id: catch_shoot_fg3m, label: "Catch & shoot 3PM", short: "C&S 3PM", group: "Catch & shoot", kind: measure, agg: sum, expr: catch_shoot_fg3m, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Threes made on catch-and-shoot jumpers (no dribble, 10+ ft)." }
+  - { id: catch_shoot_fg3a, label: "Catch & shoot 3PA", short: "C&S 3PA", group: "Catch & shoot", kind: measure, agg: sum, expr: catch_shoot_fg3a, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Threes taken on catch-and-shoot jumpers (no dribble, 10+ ft)." }
+  - { id: catch_shoot_pts, label: "Catch & shoot points", short: "C&S PTS", group: "Catch & shoot", kind: measure, agg: sum, expr: catch_shoot_pts, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Points on catch-and-shoot jumpers (no dribble, 10+ ft)." }
+  - { id: catch_shoot_fg_pct, label: "Catch & shoot FG%", short: "C&S FG%", group: "Catch & shoot", kind: measure, agg: ratio, requires: [catch_shoot_fgm, catch_shoot_fga], formula: "catch_shoot_fgm / nullif(catch_shoot_fga, 0)", format: ".1%", higher_is_better: true, datasets: [player_season], source: season_dash, description: "FG% on catch-and-shoot jumpers (no dribble, 10+ ft)." }
+  - { id: catch_shoot_fg3_pct, label: "Catch & shoot 3P%", short: "C&S 3P%", group: "Catch & shoot", kind: measure, agg: ratio, requires: [catch_shoot_fg3m, catch_shoot_fg3a], formula: "catch_shoot_fg3m / nullif(catch_shoot_fg3a, 0)", format: ".1%", higher_is_better: true, datasets: [player_season], source: season_dash, description: "3P% on catch-and-shoot jumpers (no dribble, 10+ ft)." }
+  - { id: catch_shoot_efg_pct, label: "Catch & shoot eFG%", short: "C&S eFG%", group: "Catch & shoot", kind: measure, agg: ratio, requires: [catch_shoot_fgm, catch_shoot_fg3m, catch_shoot_fga], formula: "(catch_shoot_fgm + 0.5 * catch_shoot_fg3m) / nullif(catch_shoot_fga, 0)", format: ".1%", higher_is_better: true, datasets: [player_season], source: season_dash, description: "Effective FG% on catch-and-shoot jumpers (no dribble, 10+ ft)." }
+
+  # ── Pull-ups (season tracking) ─────────────────────────────────────────────
+  - { id: pull_up_fgm, label: "Pull-up FGM", short: "PU FGM", group: "Pull-ups", kind: measure, agg: sum, expr: pull_up_fgm, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Makes on pull-up jumpers (dribbled into the shot, 10+ ft)." }
+  - { id: pull_up_fga, label: "Pull-up FGA", short: "PU FGA", group: "Pull-ups", kind: measure, agg: sum, expr: pull_up_fga, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Attempts on pull-up jumpers (dribbled into the shot, 10+ ft)." }
+  - { id: pull_up_fg3m, label: "Pull-up 3PM", short: "PU 3PM", group: "Pull-ups", kind: measure, agg: sum, expr: pull_up_fg3m, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Threes made on pull-up jumpers (dribbled into the shot, 10+ ft)." }
+  - { id: pull_up_fg3a, label: "Pull-up 3PA", short: "PU 3PA", group: "Pull-ups", kind: measure, agg: sum, expr: pull_up_fg3a, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Threes taken on pull-up jumpers (dribbled into the shot, 10+ ft)." }
+  - { id: pull_up_pts, label: "Pull-up points", short: "PU PTS", group: "Pull-ups", kind: measure, agg: sum, expr: pull_up_pts, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Points on pull-up jumpers (dribbled into the shot, 10+ ft)." }
+  - { id: pull_up_fg_pct, label: "Pull-up FG%", short: "PU FG%", group: "Pull-ups", kind: measure, agg: ratio, requires: [pull_up_fgm, pull_up_fga], formula: "pull_up_fgm / nullif(pull_up_fga, 0)", format: ".1%", higher_is_better: true, datasets: [player_season], source: season_dash, description: "FG% on pull-up jumpers (dribbled into the shot, 10+ ft)." }
+  - { id: pull_up_fg3_pct, label: "Pull-up 3P%", short: "PU 3P%", group: "Pull-ups", kind: measure, agg: ratio, requires: [pull_up_fg3m, pull_up_fg3a], formula: "pull_up_fg3m / nullif(pull_up_fg3a, 0)", format: ".1%", higher_is_better: true, datasets: [player_season], source: season_dash, description: "3P% on pull-up jumpers (dribbled into the shot, 10+ ft)." }
+  - { id: pull_up_efg_pct, label: "Pull-up eFG%", short: "PU eFG%", group: "Pull-ups", kind: measure, agg: ratio, requires: [pull_up_fgm, pull_up_fg3m, pull_up_fga], formula: "(pull_up_fgm + 0.5 * pull_up_fg3m) / nullif(pull_up_fga, 0)", format: ".1%", higher_is_better: true, datasets: [player_season], source: season_dash, description: "Effective FG% on pull-up jumpers (dribbled into the shot, 10+ ft)." }
+
+  # ── Touches (season tracking) ─────────────────────────────────────────────
+  - { id: front_ct_touches, label: "Frontcourt touches", short: "FC TCH", group: "Touches", kind: measure, agg: sum, expr: front_ct_touches, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Touches in the frontcourt." }
+  - { id: time_of_poss, label: "Time of possession", short: "TOP", group: "Touches", kind: measure, agg: sum, expr: time_of_poss, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Minutes with the ball in their hands." }
+  - { id: sec_per_touch, label: "Seconds per touch", short: "SEC/TCH", group: "Touches", kind: measure, agg: ratio, requires: [time_of_poss, touches], formula: "60 * time_of_poss / nullif(touches, 0)", format: ".2f", datasets: [player_season], source: season_dash, description: "Average seconds holding the ball per touch." }
+  - { id: elbow_touches, label: "Elbow touches", short: "ELB TCH", group: "Touches", kind: measure, agg: sum, expr: elbow_touches, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Touches at the elbow." }
+  - { id: elbow_touch_fgm, label: "Elbow touch FGM", short: "ELB FGM", group: "Touches", kind: measure, agg: sum, expr: elbow_touch_fgm, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "FGM off elbow touches." }
+  - { id: elbow_touch_fga, label: "Elbow touch FGA", short: "ELB FGA", group: "Touches", kind: measure, agg: sum, expr: elbow_touch_fga, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "FGA off elbow touches." }
+  - { id: elbow_touch_pts, label: "Elbow touch points", short: "ELB PTS", group: "Touches", kind: measure, agg: sum, expr: elbow_touch_pts, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Points off elbow touches." }
+  - { id: elbow_touch_passes, label: "Elbow touch passes", short: "ELB PASSES", group: "Touches", kind: measure, agg: sum, expr: elbow_touch_passes, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Passes off elbow touches." }
+  - { id: elbow_touch_ast, label: "Elbow touch assists", short: "ELB AST", group: "Touches", kind: measure, agg: sum, expr: elbow_touch_ast, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Assists off elbow touches." }
+  - { id: elbow_touch_tov, label: "Elbow touch turnovers", short: "ELB TOV", group: "Touches", kind: measure, agg: sum, expr: elbow_touch_tov, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [player_season], source: season_dash, description: "Turnovers off elbow touches." }
+  - { id: pts_per_elbow_touch, label: "Points per elbow touch", short: "PTS/ELB", group: "Touches", kind: measure, agg: ratio, requires: [elbow_touch_pts, elbow_touches], formula: "elbow_touch_pts / nullif(elbow_touches, 0)", format: ".3f", higher_is_better: true, datasets: [player_season], source: season_dash, description: "Points scored per elbow touch." }
+  - { id: elbow_touch_fg_pct, label: "Elbow touch FG%", short: "ELB FG%", group: "Touches", kind: measure, agg: ratio, requires: [elbow_touch_fgm, elbow_touch_fga], formula: "elbow_touch_fgm / nullif(elbow_touch_fga, 0)", format: ".1%", higher_is_better: true, datasets: [player_season], source: season_dash, description: "FG% on shots off elbow touches." }
+  - { id: post_touches, label: "Post touches", short: "POST TCH", group: "Touches", kind: measure, agg: sum, expr: post_touches, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Touches at the post." }
+  - { id: post_touch_fgm, label: "Post touch FGM", short: "POST FGM", group: "Touches", kind: measure, agg: sum, expr: post_touch_fgm, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "FGM off post touches." }
+  - { id: post_touch_fga, label: "Post touch FGA", short: "POST FGA", group: "Touches", kind: measure, agg: sum, expr: post_touch_fga, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "FGA off post touches." }
+  - { id: post_touch_pts, label: "Post touch points", short: "POST PTS", group: "Touches", kind: measure, agg: sum, expr: post_touch_pts, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Points off post touches." }
+  - { id: post_touch_passes, label: "Post touch passes", short: "POST PASSES", group: "Touches", kind: measure, agg: sum, expr: post_touch_passes, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Passes off post touches." }
+  - { id: post_touch_ast, label: "Post touch assists", short: "POST AST", group: "Touches", kind: measure, agg: sum, expr: post_touch_ast, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Assists off post touches." }
+  - { id: post_touch_tov, label: "Post touch turnovers", short: "POST TOV", group: "Touches", kind: measure, agg: sum, expr: post_touch_tov, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [player_season], source: season_dash, description: "Turnovers off post touches." }
+  - { id: pts_per_post_touch, label: "Points per post touch", short: "PTS/POST", group: "Touches", kind: measure, agg: ratio, requires: [post_touch_pts, post_touches], formula: "post_touch_pts / nullif(post_touches, 0)", format: ".3f", higher_is_better: true, datasets: [player_season], source: season_dash, description: "Points scored per post touch." }
+  - { id: post_touch_fg_pct, label: "Post touch FG%", short: "POST FG%", group: "Touches", kind: measure, agg: ratio, requires: [post_touch_fgm, post_touch_fga], formula: "post_touch_fgm / nullif(post_touch_fga, 0)", format: ".1%", higher_is_better: true, datasets: [player_season], source: season_dash, description: "FG% on shots off post touches." }
+  - { id: paint_touches, label: "Paint touches", short: "PNT TCH", group: "Touches", kind: measure, agg: sum, expr: paint_touches, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Touches at the paint." }
+  - { id: paint_touch_fgm, label: "Paint touch FGM", short: "PNT FGM", group: "Touches", kind: measure, agg: sum, expr: paint_touch_fgm, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "FGM off paint touches." }
+  - { id: paint_touch_fga, label: "Paint touch FGA", short: "PNT FGA", group: "Touches", kind: measure, agg: sum, expr: paint_touch_fga, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "FGA off paint touches." }
+  - { id: paint_touch_pts, label: "Paint touch points", short: "PNT PTS", group: "Touches", kind: measure, agg: sum, expr: paint_touch_pts, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Points off paint touches." }
+  - { id: paint_touch_passes, label: "Paint touch passes", short: "PNT PASSES", group: "Touches", kind: measure, agg: sum, expr: paint_touch_passes, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Passes off paint touches." }
+  - { id: paint_touch_ast, label: "Paint touch assists", short: "PNT AST", group: "Touches", kind: measure, agg: sum, expr: paint_touch_ast, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Assists off paint touches." }
+  - { id: paint_touch_tov, label: "Paint touch turnovers", short: "PNT TOV", group: "Touches", kind: measure, agg: sum, expr: paint_touch_tov, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [player_season], source: season_dash, description: "Turnovers off paint touches." }
+  - { id: pts_per_paint_touch, label: "Points per paint touch", short: "PTS/PNT", group: "Touches", kind: measure, agg: ratio, requires: [paint_touch_pts, paint_touches], formula: "paint_touch_pts / nullif(paint_touches, 0)", format: ".3f", higher_is_better: true, datasets: [player_season], source: season_dash, description: "Points scored per paint touch." }
+  - { id: paint_touch_fg_pct, label: "Paint touch FG%", short: "PNT FG%", group: "Touches", kind: measure, agg: ratio, requires: [paint_touch_fgm, paint_touch_fga], formula: "paint_touch_fgm / nullif(paint_touch_fga, 0)", format: ".1%", higher_is_better: true, datasets: [player_season], source: season_dash, description: "FG% on shots off paint touches." }
+
+  # ── Passing (season tracking) ─────────────────────────────────────────────
+  - { id: passes_received, label: "Passes received", short: "PASS REC", group: "Passing", kind: measure, agg: sum, expr: passes_received, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Passes caught." }
+  - { id: potential_ast, label: "Potential assists", short: "POT AST", group: "Passing", kind: measure, agg: sum, expr: potential_ast, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_season], source: season_dash, description: "Passes that led to a shot that would have been an assist if it went in." }
+  - { id: ast_pts_created, label: "Assist points created", short: "AST PTS", group: "Passing", kind: measure, agg: sum, expr: ast_pts_created, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: true, datasets: [player_season], source: season_dash, description: "Points from their assists (3 for an assisted three)." }
+  - { id: ast_per_pass, label: "Assists per pass", short: "AST/PASS", group: "Passing", kind: measure, agg: ratio, requires: [ast, passes], formula: "ast / nullif(passes, 0)", format: ".1%", higher_is_better: true, datasets: [player_season], source: season_dash, description: "Share of passes that became assists." }
+  - { id: potential_ast_conv, label: "Potential assist conversion", short: "AST/POT", group: "Passing", kind: measure, agg: ratio, requires: [ast, potential_ast], formula: "ast / nullif(potential_ast, 0)", format: ".1%", datasets: [player_season], source: season_dash, description: "Share of potential assists that became real ones (mostly how well teammates shot)." }
+
+  # ── Rebounding (season tracking) ──────────────────────────────────────────
+  - { id: oreb_contest, label: "Contested offensive rebounds", short: "C OREB", group: "Rebounding", kind: measure, agg: sum, expr: oreb_contest, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Offensive rebounds grabbed with an opponent within 3.5 ft." }
+  - { id: dreb_contest, label: "Contested defensive rebounds", short: "C DREB", group: "Rebounding", kind: measure, agg: sum, expr: dreb_contest, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Defensive rebounds grabbed with an opponent within 3.5 ft." }
+  - { id: reb_contest, label: "Contested rebounds", short: "C REB", group: "Rebounding", kind: measure, agg: sum, expr: reb_contest, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Rebounds grabbed with an opponent within 3.5 ft." }
+  - { id: oreb_chances, label: "Offensive rebound chances", short: "OREB CH", group: "Rebounding", kind: measure, agg: sum, expr: oreb_chances, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Times they were within 3.5 ft of an offensive rebound." }
+  - { id: dreb_chances, label: "Defensive rebound chances", short: "DREB CH", group: "Rebounding", kind: measure, agg: sum, expr: dreb_chances, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Times they were within 3.5 ft of a defensive rebound." }
+  - { id: contested_reb_pct, label: "Contested rebound %", short: "C REB%", group: "Rebounding", kind: measure, agg: ratio, requires: [reb_contest, reb], formula: "reb_contest / nullif(reb, 0)", format: ".1%", datasets: [player_season], source: season_dash, description: "Share of their rebounds that were contested." }
+  - { id: oreb_chance_pct, label: "Offensive rebound chance %", short: "OREB CH%", group: "Rebounding", kind: measure, agg: ratio, requires: [oreb, oreb_chances], formula: "oreb / nullif(oreb_chances, 0)", format: ".1%", higher_is_better: true, datasets: [player_season], source: season_dash, description: "Offensive rebounds grabbed per chance." }
+  - { id: dreb_chance_pct, label: "Defensive rebound chance %", short: "DREB CH%", group: "Rebounding", kind: measure, agg: ratio, requires: [dreb, dreb_chances], formula: "dreb / nullif(dreb_chances, 0)", format: ".1%", higher_is_better: true, datasets: [player_season], source: season_dash, description: "Defensive rebounds grabbed per chance." }
+
+  # ── Speed and distance (season tracking) ──────────────────────────────────
+  - { id: dist_miles_off, label: "Distance on offense", short: "DIST OFF", group: "Tracking", kind: measure, agg: sum, expr: dist_miles_off, modes: [per_game, per_36, total], default_mode: per_game, format: ".2f", datasets: [player_season], source: season_dash, description: "Miles covered on offense." }
+  - { id: dist_miles_def, label: "Distance on defense", short: "DIST DEF", group: "Tracking", kind: measure, agg: sum, expr: dist_miles_def, modes: [per_game, per_36, total], default_mode: per_game, format: ".2f", datasets: [player_season], source: season_dash, description: "Miles covered on defense." }
+  - { id: speed_off, label: "Speed on offense", short: "SPD OFF", group: "Tracking", kind: measure, agg: weighted_avg, expr: avg_speed_off, weight: min, format: ".2f", datasets: [player_season], source: season_dash, description: "Average speed on offense (mph), weighted by minutes." }
+  - { id: speed_def, label: "Speed on defense", short: "SPD DEF", group: "Tracking", kind: measure, agg: weighted_avg, expr: avg_speed_def, weight: min, format: ".2f", datasets: [player_season], source: season_dash, description: "Average speed on defense (mph), weighted by minutes." }
+  - { id: off_box_outs, label: "Offensive box outs", short: "OFF BOX", group: "Hustle", kind: measure, agg: sum, expr: off_box_outs, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Box outs on offense." }
+  - { id: def_box_outs, label: "Defensive box outs", short: "DEF BOX", group: "Hustle", kind: measure, agg: sum, expr: def_box_outs, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Box outs on defense." }
+
+  # ── Defended shots (season tracking: closest defender) ────────────────────
+  - { id: d_fgm, label: "Makes allowed (closest defender)", short: "DFGM", group: "Defended shots", kind: measure, agg: sum, expr: d_fgm, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [player_season], source: season_dash, description: "Makes on all shots where they were the closest defender." }
+  - { id: d_fga, label: "Shots defended (closest defender)", short: "DFGA", group: "Defended shots", kind: measure, agg: sum, expr: d_fga, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Attempts on all shots where they were the closest defender." }
+  - { id: d_fgm_expected, label: "Expected makes (all shots)", short: "DF xFGM", group: "Defended shots", kind: measure, agg: sum, expr: d_fgm_expected, modes: [total], format: ".1f", hidden: true, datasets: [player_season], source: season_dash, description: "What those shooters would usually make on all shots." }
+  - { id: d_fg_pct, label: "FG% allowed", short: "DFG%", group: "Defended shots", kind: measure, agg: ratio, requires: [d_fgm, d_fga], formula: "d_fgm / nullif(d_fga, 0)", format: ".1%", higher_is_better: false, datasets: [player_season], source: season_dash, description: "How shooters did on all shots with them as the closest defender." }
+  - { id: d_fg_pct_diff, label: "FG% vs normal", short: "DFG% +/-", group: "Defended shots", kind: measure, agg: ratio, requires: [d_fgm, d_fgm_expected, d_fga], formula: "(d_fgm - d_fgm_expected) / nullif(d_fga, 0)", format: "+.1%", higher_is_better: false, datasets: [player_season], source: season_dash, description: "FG% allowed on all shots minus what those shooters usually shoot. Negative is good defense." }
+  - { id: d_fg3m, label: "3-point makes allowed (closest defender)", short: "DF3GM", group: "Defended shots", kind: measure, agg: sum, expr: d_fg3m, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [player_season], source: season_dash, description: "Makes on threes where they were the closest defender." }
+  - { id: d_fg3a, label: "3-point shots defended (closest defender)", short: "DF3GA", group: "Defended shots", kind: measure, agg: sum, expr: d_fg3a, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Attempts on threes where they were the closest defender." }
+  - { id: d_fg3m_expected, label: "Expected makes (threes)", short: "DF3 xFGM", group: "Defended shots", kind: measure, agg: sum, expr: d_fg3m_expected, modes: [total], format: ".1f", hidden: true, datasets: [player_season], source: season_dash, description: "What those shooters would usually make on threes." }
+  - { id: d_fg3_pct, label: "3-point FG% allowed", short: "DF3G%", group: "Defended shots", kind: measure, agg: ratio, requires: [d_fg3m, d_fg3a], formula: "d_fg3m / nullif(d_fg3a, 0)", format: ".1%", higher_is_better: false, datasets: [player_season], source: season_dash, description: "How shooters did on threes with them as the closest defender." }
+  - { id: d_fg3_pct_diff, label: "3-point FG% vs normal", short: "DF3G% +/-", group: "Defended shots", kind: measure, agg: ratio, requires: [d_fg3m, d_fg3m_expected, d_fg3a], formula: "(d_fg3m - d_fg3m_expected) / nullif(d_fg3a, 0)", format: "+.1%", higher_is_better: false, datasets: [player_season], source: season_dash, description: "FG% allowed on threes minus what those shooters usually shoot. Negative is good defense." }
+  - { id: d_lt6_fgm, label: "Within 6 ft makes allowed (closest defender)", short: "DF6GM", group: "Defended shots", kind: measure, agg: sum, expr: d_lt6_fgm, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", higher_is_better: false, datasets: [player_season], source: season_dash, description: "Makes on shots within 6 ft where they were the closest defender." }
+  - { id: d_lt6_fga, label: "Within 6 ft shots defended (closest defender)", short: "DF6GA", group: "Defended shots", kind: measure, agg: sum, expr: d_lt6_fga, modes: [per_game, per_36, total], default_mode: per_game, format: ".1f", datasets: [player_season], source: season_dash, description: "Attempts on shots within 6 ft where they were the closest defender." }
+  - { id: d_lt6_fgm_expected, label: "Expected makes (shots within 6 ft)", short: "DF6 xFGM", group: "Defended shots", kind: measure, agg: sum, expr: d_lt6_fgm_expected, modes: [total], format: ".1f", hidden: true, datasets: [player_season], source: season_dash, description: "What those shooters would usually make on shots within 6 ft." }
+  - { id: d_lt6_pct, label: "Within 6 ft FG% allowed", short: "DF6G%", group: "Defended shots", kind: measure, agg: ratio, requires: [d_lt6_fgm, d_lt6_fga], formula: "d_lt6_fgm / nullif(d_lt6_fga, 0)", format: ".1%", higher_is_better: false, datasets: [player_season], source: season_dash, description: "How shooters did on shots within 6 ft with them as the closest defender." }
+  - { id: d_lt6_pct_diff, label: "Within 6 ft FG% vs normal", short: "DF6G% +/-", group: "Defended shots", kind: measure, agg: ratio, requires: [d_lt6_fgm, d_lt6_fgm_expected, d_lt6_fga], formula: "(d_lt6_fgm - d_lt6_fgm_expected) / nullif(d_lt6_fga, 0)", format: "+.1%", higher_is_better: false, datasets: [player_season], source: season_dash, description: "FG% allowed on shots within 6 ft minus what those shooters usually shoot. Negative is good defense." }
+
+  # ── Matchups (who guarded who) ────────────────────────────────────────────
+  - id: attacker
+    label: "Player guarded"
+    short: "Guarded"
+    group: "Matchup"
+    kind: dimension
+    type: text
+    key: attacker_id
+    expr: "attacker_name"
+    datasets: [matchups]
+    source: season_dash
+    description: "The offensive player they were guarding."
+
+  - id: attacker_position
+    label: "Position guarded"
+    short: "Pos guarded"
+    group: "Matchup"
+    kind: dimension
+    type: text
+    expr: "attacker_position"
+    datasets: [matchups]
+    source: season_dash
+    description: "Listed position of the player they guarded."
+
+  - id: attacker_height
+    label: "Height guarded"
+    short: "Ht guarded"
+    group: "Matchup"
+    kind: dimension
+    type: bucket
+    expr: "CASE WHEN attacker_height_in IS NULL THEN NULL WHEN attacker_height_in < 75 THEN 'Under 6''3' WHEN attacker_height_in < 79 THEN '6''3-6''6' WHEN attacker_height_in < 82 THEN '6''7-6''9' ELSE '6''10+' END"
+    bins: ["Under 6'3", "6'3-6'6", "6'7-6'9", "6'10+"]
+    datasets: [matchups]
+    source: season_dash
+    description: "Height of the player they guarded."
+
+  - { id: matchup_ast, label: "Assists allowed", short: "AST ALW", group: "Defense", kind: measure, agg: sum, expr: matchup_ast, modes: [total], default_mode: total, format: ".1f", higher_is_better: false, datasets: [matchups], source: season_dash, description: "Assists by the players they guarded." }
+  - { id: matchup_tov, label: "Turnovers forced", short: "TOV FRC", group: "Defense", kind: measure, agg: sum, expr: matchup_tov, modes: [total], default_mode: total, format: ".1f", higher_is_better: true, datasets: [matchups], source: season_dash, description: "Turnovers by the players they guarded." }
+  - { id: matchup_blk, label: "Blocks on matchup", short: "BLK", group: "Defense", kind: measure, agg: sum, expr: matchup_blk, modes: [total], default_mode: total, format: ".1f", higher_is_better: true, datasets: [matchups], source: season_dash, description: "Blocks on the player they guarded." }
+  - { id: matchup_ftm, label: "Free throws allowed", short: "FTM ALW", group: "Defense", kind: measure, agg: sum, expr: matchup_ftm, modes: [total], default_mode: total, format: ".1f", higher_is_better: false, datasets: [matchups], source: season_dash, description: "Free throws made by the players they guarded." }
+  - { id: matchup_fta, label: "Free throw attempts allowed", short: "FTA ALW", group: "Defense", kind: measure, agg: sum, expr: matchup_fta, modes: [total], default_mode: total, format: ".1f", higher_is_better: false, datasets: [matchups], source: season_dash, description: "Free throws taken by the players they guarded." }
+  - { id: matchup_shooting_fouls, label: "Shooting fouls", short: "SF", group: "Defense", kind: measure, agg: sum, expr: matchup_shooting_fouls, modes: [total], default_mode: total, format: ".1f", higher_is_better: false, datasets: [matchups], source: season_dash, description: "Shooting fouls on the players they guarded." }

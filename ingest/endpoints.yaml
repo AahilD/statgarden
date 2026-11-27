@@ -206,17 +206,22 @@ endpoints:
     endpoint: LeagueDashLineups
     per: season
     params: { per_mode_detailed: Totals }
+    note: one call per team; a league-wide call stops at 2,000 lineups
     sweep:
       group_quantity: [5, 2]
       measure_type_detailed_defense: [Base, Advanced]
+      team_id_nullable: [1610612737, 1610612738, 1610612739, 1610612740, 1610612741, 1610612742, 1610612743, 1610612744, 1610612745, 1610612746, 1610612747, 1610612748, 1610612749, 1610612750, 1610612751, 1610612752, 1610612753, 1610612754, 1610612755, 1610612756, 1610612757, 1610612758, 1610612759, 1610612760, 1610612761, 1610612762, 1610612763, 1610612764, 1610612765, 1610612766]
 
-  # ── Shots (one call = every shot in a season) ────────────────────────────
+  # ── Shots (one call per season month) ────────────────────────────────────
+  # A single call stops at 102,400 shots (about half a season), so it's split
+  # by month: 1 = October ... 9 = June. Months with no games come back empty.
   - name: shots
     source: stats
     endpoint: ShotChartDetail
     per: season
     season_param: season_nullable
     params: { team_id: 0, player_id: 0, context_measure_simple: FGA }
+    sweep: { month: [1, 2, 3, 4, 5, 6, 7, 8, 9] }
 
   # ── Per game: stats.nba.com ──────────────────────────────────────────────
   - { name: box_summary,      source: stats, endpoint: BoxScoreSummaryV3,     per: game, note: "officials, inactive players, line score, arena" }

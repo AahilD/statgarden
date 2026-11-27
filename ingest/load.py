@@ -224,6 +224,7 @@ def load(rebuild: bool = False, only: set[str] | None = None) -> None:
         if only and ep.name not in only:
             continue
         files = sorted((RAW_DIR / ep.source / ep.name).glob("*/*.json.gz"))
+        _forget_missing(con, ep.source, ep.name, {str(f.relative_to(RAW_DIR)) for f in files}, loaded)
         todo = []
         for f in files:
             rel = str(f.relative_to(RAW_DIR))
@@ -255,6 +256,19 @@ def load(rebuild: bool = False, only: set[str] | None = None) -> None:
 
     print(f"loaded {total_files:,} files, {total_rows:,} rows in {time.monotonic() - t0:.0f}s")
     con.close()
+
+
+def _forget_missing(con, source: str, ep_name: str, on_disk: set[str], loaded: dict) -> None:
+    """Files that were loaded once but are gone now (moved or replaced): drop their rows."""
+    prefix = f"{source}/{ep_name}/"
+    gone = [f for f in loaded if f.startswith(prefix) and f not in on_disk]
+    for rel in gone:
+        for t in filter(None, (loaded[rel][1] or "").split(",")):
+            con.execute(f'DELETE FROM "{t}" WHERE _file = ?', [rel])
+        con.execute("DELETE FROM raw__files WHERE file = ?", [rel])
+        del loaded[rel]
+    if gone:
+        print(f"  {ep_name:<30} dropped rows from {len(gone)} files no longer on disk", flush=True)
 
 
 def _load_chunk(con, ep_name: str, chunk: list, buffers: dict[str, list[dict]], file_records: list) -> int:

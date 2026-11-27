@@ -14,12 +14,20 @@ MAX_ROWS_FIELDS = 3
 MAX_COLUMN_FIELDS = 2
 MAX_VALUES = 6
 MAX_LIMIT = 5000
+MAX_CALCS = 8
+
+# how a calculated stat is shown
+CALC_FORMATS = {"number": ".1f", "precise": ".3f", "percent": ".1%", "whole": ".0f"}
 
 
 class Filter(BaseModel):
     field: str
     op: Op
     value: Any
+    # numbers only: "game" keeps the games that pass (before adding up);
+    # "group" keeps the rows of the result that pass (after adding up)
+    scope: Literal["game", "group"] = "game"
+    mode: Mode | None = None  # group scope: which version of the number (e.g. per game)
 
     @field_validator("value")
     @classmethod
@@ -39,6 +47,14 @@ class Filter(BaseModel):
 class Value(BaseModel):
     field: str
     mode: Mode | None = None
+
+
+class Calc(BaseModel):
+    id: str = Field(pattern=r"^calc_[a-z0-9_]{1,24}$")
+    label: str = Field(min_length=1, max_length=40)
+    formula: str = Field(min_length=1, max_length=200)
+    format: Literal["number", "precise", "percent", "whole"] = "number"
+    higher_is_better: bool | None = None  # for shading: True, False, or None for no shading
 
 
 class Sort(BaseModel):
@@ -68,6 +84,7 @@ class PivotSpec(BaseModel):
     rows: list[str] = Field(default_factory=list, max_length=MAX_ROWS_FIELDS)
     columns: list[str] = Field(default_factory=list, max_length=MAX_COLUMN_FIELDS)
     values: list[Value] = Field(default_factory=list, max_length=MAX_VALUES)
+    calcs: list[Calc] = Field(default_factory=list, max_length=MAX_CALCS)
     sort: list[Sort] = Field(default_factory=list, max_length=3)
     limit: int = Field(default=100, ge=1, le=MAX_LIMIT)
     chart: Chart = Field(default_factory=Chart)
