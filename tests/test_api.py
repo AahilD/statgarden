@@ -530,3 +530,29 @@ def test_shading_choices_round_trip_and_dont_change_the_query():
     spec = PivotSpec(**shaded)
     assert spec.shade == "split" and spec.values[0].better == "lower"
     assert PivotSpec(shade="sideways").shade == "rank"
+
+
+def test_links_to_site_pages():
+    # one player on one date is one game: the date links to it, the player to their page
+    d = q(dataset="player_game", rows=["player", "game_date"], values=[{"field": "pts"}], filters=REG_2526, limit=3)
+    meta = {f["id"]: f["link"] for f in d["row_fields"]}
+    assert meta == {"player": "player", "game_date": "game"}
+    for r in d["rows"]:
+        assert r["d_player__key"] and len(r["d_game_date__game"]) == 10
+        game = client.get(f"/game/{r['d_game_date__game']}").json()
+        players = {p["player_id"] for p in game["away"]["players"] + game["home"]["players"]}
+        assert r["d_player__key"] in players
+
+
+def test_date_alone_links_only_single_game_nights():
+    d = q(dataset="team_game", rows=["game_date"], values=[{"field": "pts"}], filters=REG_2526, limit=200)
+    # a league-wide night has many games: no link, and the row isn't split per game
+    assert len({r["d_game_date"] for r in d["rows"]}) == len(d["rows"])
+    assert any(r["d_game_date__game"] is None for r in d["rows"])
+
+
+def test_no_game_link_without_game_ids():
+    d = q(dataset="player_season", rows=["player"], values=[{"field": "pts"}], limit=1)
+    assert d["row_fields"][0]["link"] == "player"
+    d = q(dataset="player_season", rows=["season"], values=[{"field": "pts"}], limit=1)
+    assert d["row_fields"][0]["link"] is None

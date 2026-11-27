@@ -34,7 +34,15 @@ export type FormulaCheck = { ok: boolean; error: string | null; fields: { id: st
 
 export type SeasonMeta = { season: string; season_type: string; games: number; last_game: string };
 
-export type ResultField = { id: string; label: string; short: string; type: string | null; bins: string[] | null };
+export type ResultField = {
+  id: string;
+  label: string;
+  short: string;
+  type: string | null;
+  bins: string[] | null;
+  /** the site has a page per value (a date only when its row is exactly one game) */
+  link: "player" | "team" | "game" | null;
+};
 export type ResultValue = {
   key: string;
   field: string;

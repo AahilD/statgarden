@@ -1,5 +1,9 @@
 """Print the reconciliation report: where stats.nba.com and cdn.nba.com disagree.
 
+stats.nba.com is the source of truth for scores, box scores and minutes; cdn.nba.com
+is only used for shot details. So disagreements here are cdn quirks to watch, not
+fixes to make. The reasoning is in the comments of transform/models/recon/*.sql.
+
 Reads the recon_* tables dbt builds (make build first).
 
     uv run python -m ingest.recon
@@ -41,6 +45,7 @@ def main() -> None:
                                 stats_ast, cdn_ast, stats_fga, cdn_fga, stats_tov, cdn_tov
                          from recon_player_box where box_differs order by game_id limit 15""")
         )
+    print("\nstats.nba.com wins every disagreement above (see transform/models/recon/*.sql).")
     con.close()
 
 

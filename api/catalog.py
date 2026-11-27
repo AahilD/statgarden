@@ -43,8 +43,12 @@ class FieldDef(BaseModel):
     datasets: list[str] | None = None  # only these datasets (default: any whose table has the columns)
     names: Literal["team"] | None = None  # values are abbreviations the site can spell out (see /meta/teams)
     hidden: bool = False  # a building block for other fields; not shown in the field list
+    # the site has a page for each value: player (by key), team (by abbreviation) or game (a date
+    # links only when its row is exactly one game, e.g. one player on one night)
+    link: Literal["player", "team", "game"] | None = None
     available: bool = True  # set at startup: works in at least one dataset
     available_in: set[str] = Field(default_factory=set, exclude=True)  # set at startup
+    link_in: set[str] = Field(default_factory=set, exclude=True)  # datasets where `link` works; set at startup
 
     @model_validator(mode="after")
     def _check(self) -> FieldDef:
@@ -140,6 +144,17 @@ def mark_available(cat: Catalog, con) -> None:
                 pass
     for f in cat.fields:
         f.available = bool(f.available_in)
+        f.link_in = set()
+        if f.link == "game":  # needs game_id next to the date
+            for ds in cat.datasets:
+                if ds.id in f.available_in:
+                    try:
+                        con.execute(f"SELECT game_id FROM {ds.table} LIMIT 0")
+                        f.link_in.add(ds.id)
+                    except Exception:
+                        pass
+        elif f.link:
+            f.link_in = set(f.available_in)
 
 
 def modes_in(cat: Catalog, f: FieldDef, ds: Dataset) -> list[str]:

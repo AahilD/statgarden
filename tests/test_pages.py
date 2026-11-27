@@ -80,3 +80,47 @@ def test_readable_formula():
     shorts = {"tov": "TOV", "fga": "FGA", "fta": "FTA"}
     assert readable_formula("tov / nullif(fga + 0.44 * fta + tov, 0)", shorts) == "TOV / (FGA + 0.44 × FTA + TOV)"
     assert readable_formula("tov / nullif(fga, 0)", shorts) == "TOV / FGA"
+
+
+def test_game_page():
+    d = client.get("/game/0022500147").json()  # Mexico City game: neutral site
+    assert (d["away"]["abbr"], d["home"]["abbr"]) == ("DAL", "DET")  # home side from the box summary
+    assert (d["away"]["pts"], d["home"]["pts"]) == (110, 122)
+    assert d["home"]["is_win"] and not d["away"]["is_win"]
+    assert d["game"]["label"] == "NBA Mexico City Game" and d["game"]["city"] == "Mexico City"
+    for t in (d["away"], d["home"]):
+        assert sum(p["pts"] for p in t["periods"]) == t["pts"]  # line score adds up
+        assert sum(p["pts"] for p in t["players"]) == t["pts"]  # so does the box score
+        assert sum(p["is_starter"] for p in t["players"]) == 5
+        assert t["players"][0]["is_starter"]  # starters first
+    assert len(d["game"]["officials"]) == 3
+
+
+def test_overtime_game_has_extra_periods():
+    gid = (
+        db.cursor()
+        .execute("SELECT gameId FROM raw_box_summary__team_periods WHERE periodType = 'OVERTIME' LIMIT 1")
+        .fetchone()[0]
+    )
+    d = client.get(f"/game/{gid}").json()
+    assert len(d["home"]["periods"]) > 4 and d["home"]["periods"][-1]["ot"]
+    assert sum(p["pts"] for p in d["home"]["periods"]) == d["home"]["pts"]
+
+
+def test_unknown_game_is_404():
+    assert client.get("/game/0099999999").status_code == 404
+    assert client.get("/game/abc").status_code == 404
+
+
+def test_old_abbreviation_finds_the_franchise():
+    # any abbreviation that's in the games but not a current team (none until old seasons load)
+    old = (
+        db.cursor()
+        .execute(
+            "SELECT DISTINCT team_abbreviation FROM fact_team_game "
+            "WHERE team_abbreviation NOT IN (SELECT team_abbreviation FROM dim_team) LIMIT 1"
+        )
+        .fetchone()
+    )
+    if old:
+        assert client.get(f"/team/{old[0]}").status_code == 200

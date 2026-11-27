@@ -102,15 +102,18 @@ async function Team({ params }: { params: PageProps<"/teams/[abbr]">["params"] }
         <Heading>Recent games</Heading>
         <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {d.games.map((g) => (
-            <li key={g.game_id} className="flex items-center gap-3 rounded-card border border-line bg-surface px-4 py-3 text-sm">
+            <li key={g.game_id}>
+              <Link
+                href={`/games/${g.game_id}`}
+                aria-label={`${g.is_win ? "Win" : "Loss"} ${g.is_home ? "vs" : "at"} ${g.opp}, ${g.pts}–${g.opp_pts}, ${shortDate(g.game_date)}: box score`}
+                className="lift flex items-center gap-3 rounded-card border border-line bg-surface px-4 py-3 text-sm hover:border-line-strong"
+              >
               <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-chip font-mono text-xs text-on-color ${g.is_win ? "bg-green" : "bg-red"}`}>
                 {g.is_win ? "W" : "L"}
               </span>
               <span className="min-w-0">
                 <span className="text-ink-2">{g.is_home ? "vs " : "@ "}</span>
-                <Link href={`/teams/${g.opp}`} className="font-medium hover:underline">
-                  {g.opp}
-                </Link>
+                <span className="font-medium">{g.opp}</span>
                 <span className="block font-mono text-[11px] text-ink-2">
                   {shortDate(g.game_date)}
                   {g.season_type !== "Regular Season" && ` · ${TYPE_SHORT[g.season_type]}`}
@@ -119,6 +122,7 @@ async function Team({ params }: { params: PageProps<"/teams/[abbr]">["params"] }
               <span className="ml-auto font-mono tabular-nums">
                 {g.pts}–{g.opp_pts}
               </span>
+              </Link>
             </li>
           ))}
         </ul>

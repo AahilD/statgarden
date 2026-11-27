@@ -99,6 +99,7 @@ fields:
     type: text
     key: player_id
     expr: player_name
+    link: player
     source: gamelog
     description: The player. Grouped by player id, shown by name.
 
@@ -163,6 +164,7 @@ fields:
     key: team_id
     expr: team_abbreviation
     names: team
+    link: team
     source: gamelog
     description: The player's team in that game (so traded players split correctly).
 
@@ -175,6 +177,7 @@ fields:
     key: opp_team_id
     expr: opp_abbreviation
     names: team
+    link: team
     source: derived
     description: The team they played against.
 
@@ -227,6 +230,7 @@ fields:
     kind: dimension
     type: date
     expr: game_date
+    link: game
     source: gamelog
     description: Local date of the game.
 
@@ -572,7 +576,7 @@ fields:
   # ── How the shot happened (Shots dataset, from play-by-play) ─────────────
   - { id: shot_move, label: Move, short: Move, group: Shot, kind: dimension, type: bucket, bins: [Pull-up, Step-back, Driving, Cutting, Running, Turnaround / fadeaway, Floater, Alley-oop, Putback / tip, No move listed], expr: shot_move, datasets: [shots], source: shots, description: "What the shooter did, from NBA.com's shot description. \"No move listed\" is a plain jumper, layup or dunk, often off a catch." }
   - { id: assisted, label: Assisted, short: Ast'd, group: Shot, kind: dimension, type: bucket, bins: [Assisted, Unassisted, Missed], expr: assisted, datasets: [shots], source: pbp, description: Whether a made shot was assisted. Misses are their own group. }
-  - { id: assister, label: Assisted by, short: Ast by, group: Shot, kind: dimension, type: text, key: assister_id, expr: assister_name, datasets: [shots], source: pbp, description: "Who made the pass on an assisted shot. Blank for unassisted makes and misses." }
+  - { id: assister, label: Assisted by, short: Ast by, group: Shot, kind: dimension, type: text, key: assister_id, expr: assister_name, link: player, datasets: [shots], source: pbp, description: "Who made the pass on an assisted shot. Blank for unassisted makes and misses." }
   - { id: possession_start, label: Possession started from, short: Poss from, group: Shot, kind: dimension, type: bucket, bins: [Defensive rebound, Turnover, Other team scored, Start of quarter, Unclear], expr: "coalesce(possession_start, 'Unclear')", datasets: [shots], source: pbp, description: "What gave the team the ball: a defensive rebound, a turnover (steals included), the other team scoring, or the start of a quarter. Worked out from play-by-play." }
   - { id: chance, label: Second chance, short: 2nd ch, group: Shot, kind: dimension, type: bucket, bins: [First chance, Second chance], expr: chance, datasets: [shots], source: pbp, description: "Second chance means the team had already grabbed an offensive rebound this possession." }
   - { id: poss_time, label: Time into possession, short: Poss time, group: Shot, kind: dimension, type: bucket, bins: ["0-6 s", "7-12 s", "13-18 s", "19+ s", Unclear], expr: "CASE WHEN secs_into_poss IS NULL THEN 'Unclear' WHEN secs_into_poss < 7 THEN '0-6 s' WHEN secs_into_poss < 13 THEN '7-12 s' WHEN secs_into_poss < 19 THEN '13-18 s' ELSE '19+ s' END", datasets: [shots], source: pbp, description: "Game-clock seconds from getting the ball to the shot. Not the shot clock: it doesn't reset on offensive rebounds." }
@@ -940,6 +944,7 @@ fields:
     type: text
     key: attacker_id
     expr: "attacker_name"
+    link: player
     datasets: [matchups]
     source: season_dash
     description: "The offensive player they were guarding."

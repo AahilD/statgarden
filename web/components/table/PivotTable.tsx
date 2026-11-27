@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HeaderTip, type OpenTip, type Tip } from "@/components/table/HeaderTip";
@@ -97,7 +98,17 @@ export function PivotTable(p: {
       helper.accessor((r) => r.dims[f.id], {
         id: `dim:${f.id}`,
         header: () => sortHeader(f.id, f.label, false, f.label),
-        cell: (c) => spell(f.id, c.getValue()),
+        cell: (c) => {
+          const href = c.row.original.links[f.id];
+          const text = spell(f.id, c.getValue());
+          return href ? (
+            <Link href={href} className="decoration-orange decoration-2 underline-offset-4 hover:underline">
+              {text}
+            </Link>
+          ) : (
+            text
+          );
+        },
       }),
     );
     const valueCols = (groupId: string) =>

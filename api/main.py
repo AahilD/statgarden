@@ -209,7 +209,8 @@ def query(spec: PivotSpec):
 
     def field_meta(fid: str) -> dict:
         f = catalog.field(fid)
-        return {"id": f.id, "label": f.label, "short": f.short, "type": f.type, "bins": f.bins}
+        link = f.link if f.link and spec.dataset in f.link_in else None
+        return {"id": f.id, "label": f.label, "short": f.short, "type": f.type, "bins": f.bins, "link": link}
 
     result = {
         "rows": rows,

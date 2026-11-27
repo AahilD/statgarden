@@ -187,7 +187,17 @@ const SEASON_COLUMNS: Column<SeasonRow>[] = [
 const made = (m: number, a: number) => `${m}-${a}`;
 
 const GAME_COLUMNS: Column<GameLine>[] = [
-  { key: "date", label: "Date", text: true, sticky: true, cell: (g) => shortDate(g.game_date) },
+  {
+    key: "date",
+    label: "Date",
+    text: true,
+    sticky: true,
+    cell: (g) => (
+      <Link href={`/games/${g.game_id}`} className="underline decoration-line-strong underline-offset-4 hover:decoration-orange">
+        {shortDate(g.game_date)}
+      </Link>
+    ),
+  },
   {
     key: "opp",
     label: "Opp",

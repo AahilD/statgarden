@@ -152,6 +152,74 @@ export type TeamListItem = {
   losses: number;
 };
 
+export type GamePlayer = {
+  team_id: number;
+  player_id: number;
+  player: string;
+  is_starter: boolean;
+  pos: string | null;
+  min: number;
+  pts: number;
+  reb: number;
+  oreb: number;
+  dreb: number;
+  ast: number;
+  stl: number;
+  blk: number;
+  tov: number;
+  pf: number;
+  fgm: number;
+  fga: number;
+  fg3m: number;
+  fg3a: number;
+  ftm: number;
+  fta: number;
+  plus_minus: number | null;
+};
+
+export type GameTeam = Omit<GamePlayer, "player_id" | "player" | "is_starter" | "pos" | "min" | "plus_minus"> & {
+  abbr: string;
+  name: string | null;
+  is_home: boolean;
+  is_win: boolean;
+  season: string;
+  season_type: SeasonType;
+  game_date: string;
+  poss: number | null;
+  pace: number | null;
+  off_rtg: number | null;
+  pts_paint: number | null;
+  pts_fast_break: number | null;
+  pts_2nd_chance: number | null;
+  pts_off_tov: number | null;
+  ts_pct: number | null;
+  periods: { period: number; ot: boolean; pts: number }[];
+  players: GamePlayer[];
+  inactive: string[];
+};
+
+export type GamePage = {
+  game: {
+    id: string;
+    date: string;
+    season: string;
+    season_type: SeasonType;
+    tipoff?: string | null; // Eastern wall-clock time, written with a (wrong) Z
+    duration?: string | null;
+    attendance?: number | null;
+    sellout?: boolean | null;
+    label?: string | null;
+    sub_label?: string | null;
+    series?: string | null;
+    arena?: string | null;
+    city?: string | null;
+    state?: string | null;
+    officials: string[];
+  };
+  away: GameTeam;
+  home: GameTeam;
+};
+
 export type GlossaryField = {
   id: string;
   label: string;
@@ -192,6 +260,14 @@ export const height = (inches: number | null) =>
 export function shortDate(iso: string, withYear = false) {
   const d = new Date(`${iso}T12:00:00`);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(withYear ? { year: "numeric" } : {}) });
+}
+
+/** "2025-11-01T22:00:00Z" (Eastern time, despite the Z) → "10:00 PM ET" */
+export function easternTime(et: string | null | undefined) {
+  const m = et?.match(/T(\d{2}):(\d{2})/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  return `${((h + 11) % 12) + 1}:${m[2]} ${h < 12 ? "AM" : "PM"} ET`;
 }
 
 /** Short season type for tight columns. */

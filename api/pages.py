@@ -128,6 +128,15 @@ def team(abbr: str):
         "SELECT team_id, team_abbreviation, team_name FROM dim_team WHERE upper(team_abbreviation) = upper(?)", [abbr]
     ).fetchone()
     if not found:
+        # an old abbreviation (SEA, NJN…) from a Lab table: the franchise it played as, now
+        found = cur.execute(
+            """
+            SELECT d.team_id, d.team_abbreviation, d.team_name FROM dim_team d
+            WHERE d.team_id = (SELECT team_id FROM fact_team_game WHERE upper(team_abbreviation) = upper(?)
+                               ORDER BY game_date DESC LIMIT 1)""",
+            [abbr],
+        ).fetchone()
+    if not found:
         raise HTTPException(404, "no team with that abbreviation")
     team_id, abbr, name = found
     current = cur.execute("SELECT max(season) FROM fact_team_game WHERE team_id = ?", [team_id]).fetchone()[0]
@@ -213,6 +222,100 @@ def teams_list():
             GROUP BY ALL ORDER BY ts.conference, ts.division, wins DESC, d.team_name"""
         )
     )
+
+
+# ── games ───────────────────────────────────────────────────────────────────
+
+
+@router.get("/game/{game_id}")
+def game(game_id: str):
+    """One game: header, line score, team totals and both box scores.
+
+    Home and away come from the box summary, not the game log's "vs.": they disagree for
+    neutral-site games (Mexico City, the NBA Cup in Las Vegas). See recon_team_score.sql.
+    """
+    if not re.fullmatch(r"\d{10}", game_id):
+        raise HTTPException(404, "no game with that id")
+    cur = db.cursor()
+    teams = _rows(
+        cur.execute(
+            """
+            WITH s AS (SELECT CAST(teamId AS bigint) AS team_id, side FROM raw_box_summary__team WHERE gameId = ?)
+            SELECT t.team_id, t.team_abbreviation AS abbr, d.team_name AS name,
+                   coalesce(s.side = 'home', t.is_home) AS is_home, t.is_win, t.pts, t.season, t.season_type,
+                   t.game_date, t.fgm, t.fga, t.fg3m, t.fg3a, t.ftm, t.fta, t.oreb, t.dreb, t.reb, t.ast, t.stl,
+                   t.blk, t.tov, t.pf, t.poss, t.pace, t.off_rtg, t.pts_paint, t.pts_fast_break, t.pts_2nd_chance,
+                   t.pts_off_tov,
+                   t.pts / nullif(2 * (t.fga + 0.44 * t.fta), 0) AS ts_pct
+            FROM fact_team_game t LEFT JOIN s USING (team_id) LEFT JOIN dim_team d USING (team_id)
+            WHERE t.game_id = ? ORDER BY is_home""",  # away first, the usual way to write a score
+            [game_id, game_id],
+        )
+    )
+    if len(teams) != 2:
+        raise HTTPException(404, "no game with that id")
+
+    info = _rows(
+        cur.execute(
+            """
+            SELECT gameEt AS tipoff, duration, try_cast(attendance AS int) AS attendance, sellout = '1' AS sellout,
+                   nullif(gameLabel, '') AS label, nullif(gameSubLabel, '') AS sub_label,
+                   nullif(seriesText, '') AS series, arena_arenaName AS arena, arena_arenaCity AS city,
+                   nullif(arena_arenaState, '') AS state
+            FROM raw_box_summary__game WHERE gameId = ?""",
+            [game_id],
+        )
+    )
+    periods = _rows(
+        cur.execute(
+            """
+            SELECT CAST(teamId AS bigint) AS team_id, CAST(period AS int) AS period, periodType = 'OVERTIME' AS ot,
+                   CAST(score AS int) AS pts
+            FROM raw_box_summary__team_periods WHERE gameId = ? ORDER BY period""",
+            [game_id],
+        )
+    )
+    players = _rows(
+        cur.execute(
+            """
+            SELECT team_id, player_id, player_name AS player, is_starter, start_position AS pos,
+                   min, pts, reb, oreb, dreb, ast, stl, blk, tov, pf, fgm, fga, fg3m, fg3a, ftm, fta, plus_minus
+            FROM fact_player_game WHERE game_id = ?
+            ORDER BY is_starter DESC, min DESC, pts DESC""",
+            [game_id],
+        )
+    )
+    inactive = _rows(
+        cur.execute(
+            """
+            SELECT CAST(teamId AS bigint) AS team_id, firstName || ' ' || familyName AS player
+            FROM raw_box_summary__team_inactives WHERE gameId = ? ORDER BY familyName""",
+            [game_id],
+        )
+    )
+    officials = [
+        r[0]
+        for r in cur.execute(
+            "SELECT name FROM raw_box_summary__officials WHERE gameId = ? ORDER BY CAST(jerseyNum AS int)", [game_id]
+        ).fetchall()
+    ]
+    for t in teams:
+        t["periods"] = [{k: p[k] for k in ("period", "ot", "pts")} for p in periods if p["team_id"] == t["team_id"]]
+        t["players"] = [p for p in players if p["team_id"] == t["team_id"]]
+        t["inactive"] = [p["player"] for p in inactive if p["team_id"] == t["team_id"]]
+    first = teams[0]
+    return {
+        "game": {
+            "id": game_id,
+            "date": first["game_date"],
+            "season": first["season"],
+            "season_type": first["season_type"],
+            **(info[0] if info else {}),
+            "officials": officials,
+        },
+        "away": teams[0],
+        "home": teams[1],
+    }
 
 
 # ── glossary ────────────────────────────────────────────────────────────────

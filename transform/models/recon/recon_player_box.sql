@@ -1,5 +1,15 @@
 -- stats.nba.com vs cdn.nba.com, one row per player per game that either source has.
--- Flags every field where the two disagree. Nothing is picked as "right" here.
+-- Flags every field where the two disagree.
+--
+-- Decision (2026-11-27): stats.nba.com wins for box scores and minutes.
+--   * The 161 stat diffs are all off by 1-2, and the stats game log (what the
+--     site shows) matches stats.nba.com's box in every one. cdn was pulled both
+--     before and after stats, so it isn't just one feed being staler.
+--   * The 8 minutes diffs are cdn errors: e.g. HOU in 0022500093 adds up to
+--     13,881 s on cdn vs 14,401 s (240 min + OT) on stats.
+--   * Rows in only one source are players who didn't play (inactive or DNP),
+--     so they're ignored.
+-- cdn.nba.com is only used for shot details (x/y, zones) that stats lacks.
 with stats as (
     select
         gameId                                          as game_id,

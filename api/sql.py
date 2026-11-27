@@ -352,9 +352,13 @@ def build(spec: PivotSpec, cat: Catalog) -> Query:
     row_cols = [c for _, c in row_sel]
     dim_cols = row_cols + [c for _, c in col_sel]
     dim_select = [f"{e} AS {c}" for e, c in row_sel + col_sel]
+    # a date links to its game only when its group is exactly one game (not grouped by, so it
+    # never splits a row: "points by date" across the league stays one row per date)
+    game_links = [_dim_col(f.id) + "__game" for f in row_fields + col_fields if f.link == "game" and ds.id in f.link_in]
+    link_select = [f"CASE WHEN count(DISTINCT game_id) = 1 THEN any_value(game_id) END AS {c}" for c in game_links]
 
     grp = (
-        f"  SELECT {', '.join(dim_select + [f'{e} AS {_base_col(k)}' for k, e in bld.bases.items()])}\n"
+        f"  SELECT {', '.join(dim_select + link_select + [f'{e} AS {_base_col(k)}' for k, e in bld.bases.items()])}\n"
         f"  FROM {ds.table}\n"
         + (f"  WHERE {' AND '.join(where)}\n" if where else "")
         + ("  GROUP BY ALL" if dim_select else "")
@@ -416,7 +420,7 @@ def build(spec: PivotSpec, cat: Catalog) -> Query:
     order = _q(sort_expr.key) if isinstance(sort_expr, ValueCol) else sort_expr
     sql = (
         "WITH " + ",\n".join(ctes) + "\n"
-        f"SELECT {', '.join(dim_cols + final_values)}\n"
+        f"SELECT {', '.join(dim_cols + game_links + final_values)}\n"
         f"FROM {source}\n"
         + (f"WHERE {' AND '.join(final_where)}\n" if final_where else "")
         + f"ORDER BY {order} {sort_dir.upper()} {nulls}"
