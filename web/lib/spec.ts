@@ -3,7 +3,9 @@ import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from
 import { z } from "zod";
 
 const OPS = ["=", "!=", ">", ">=", "<", "<=", "in", "not_in", "between", "contains"] as const;
-const MODES = ["total", "per_game", "per_36", "per_100"] as const;
+const MODES = ["total", "per_game", "per_36", "per_100", "pct_col", "pct_row"] as const;
+/** "Show as a share" modes: each group's total as a share of its column's (or row's) total. */
+export const SHARE_MODES: readonly string[] = ["pct_col", "pct_row"];
 export const CALC_FORMATS = ["number", "precise", "percent", "whole"] as const;
 export const SHADE_MODES = ["rank", "average", "split", "baseline", "off"] as const;
 
@@ -14,6 +16,10 @@ const FilterSchema = z.object({
   // numbers only: "game" keeps the games that pass before adding up; "group" keeps result rows after
   scope: z.enum(["game", "group"]).catch("game").optional(),
   mode: z.enum(MODES).optional(),
+  // between only: whether each end counts ("[)" = from 20 up to but not including 25)
+  ends: z.enum(["[]", "[)", "(]", "()"]).catch("[]").optional(),
+  // between only: keep what's outside the range (under 10 or over 30)
+  outside: z.boolean().catch(false).optional(),
 });
 
 /** A stat worked out from other fields, e.g. Points per minute = pts / min. Lives in the link. */
@@ -50,12 +56,21 @@ export const SpecSchema = z.object({
       // what's on screen: the table, the chart, or both
       view: z.enum(["table", "chart", "both"]).default("table"),
       // "auto" picks a type from the fields; anything unknown (old links said "table") falls back to it
-      type: z.enum(["auto", "bar", "line", "scatter", "heatmap"]).catch("auto"),
+      type: z.enum(["auto", "bar", "line", "scatter", "heatmap", "histogram"]).catch("auto"),
+      // bars with colours: side by side, stacked, or stacked to 100% of each bar
+      stack: z.enum(["none", "stack", "pct"]).catch("none").default("none"),
+      // histogram: how wide each bin is (in the number's own units; 0.02 = 2%). Empty = pick one
+      bin: z.number().positive().nullish().catch(null),
+      // bars and histograms: print each number on its bar, not just on hover
+      labels: z.boolean().catch(false).default(false),
       x: z.string().nullish(),
       y: z.string().nullish(),
       color: z.string().nullish(),
+      // scatter: which points get names. Picked ones are always named and ringed.
+      names: z.enum(["auto", "all", "none"]).catch("auto").default("auto"),
+      picked: z.array(z.string()).max(30).catch([]).default([]),
     })
-    .default({ view: "table", type: "auto" }),
+    .default({ view: "table", type: "auto", stack: "none", labels: false, names: "auto", picked: [] }),
 });
 
 export type PivotSpec = z.infer<typeof SpecSchema>;

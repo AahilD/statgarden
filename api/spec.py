@@ -28,6 +28,10 @@ class Filter(BaseModel):
     # "group" keeps the rows of the result that pass (after adding up)
     scope: Literal["game", "group"] = "game"
     mode: Mode | None = None  # group scope: which version of the number (e.g. per game)
+    # between only: whether each end counts. "[]" both in, "[)" low in / high out, and so on
+    ends: Literal["[]", "[)", "(]", "()"] = "[]"
+    # between only: keep what's outside the range instead (e.g. under 10 or over 30)
+    outside: bool = False
 
     @field_validator("value")
     @classmethod
@@ -37,8 +41,14 @@ class Filter(BaseModel):
             if not isinstance(v, list) or not v or len(v) > 200:
                 raise ValueError("in / not_in need a list of 1-200 values")
         elif op == "between":
-            if not isinstance(v, list) or len(v) != 2:
-                raise ValueError("between needs [low, high]")
+            # either end can be left open (null), but not both
+            if (
+                not isinstance(v, list)
+                or len(v) != 2
+                or not all(x is None or (isinstance(x, (int, float)) and not isinstance(x, bool)) for x in v)
+                or all(x is None for x in v)
+            ):
+                raise ValueError("between needs [low, high]; one of them can be null")
         elif isinstance(v, (list, dict)):
             raise ValueError(f"{op} needs a single value")
         return v
@@ -67,16 +77,31 @@ class Sort(BaseModel):
 class Chart(BaseModel):
     # The API doesn't draw charts; it keeps these so a view round-trips intact.
     view: Literal["table", "chart", "both"] = "table"
-    type: Literal["auto", "bar", "line", "scatter", "heatmap"] = "auto"
+    type: Literal["auto", "bar", "line", "scatter", "heatmap", "histogram"] = "auto"
+    stack: Literal["none", "stack", "pct"] = "none"  # bars: side by side, stacked, or stacked to 100%
+    bin: float | None = Field(default=None, gt=0)  # histogram bin width; None = pick one
+    labels: bool = False  # bars and histograms: numbers printed on the bars
     x: str | None = None
     y: str | None = None
     color: str | None = None
+    names: Literal["auto", "all", "none"] = "auto"  # scatter: which points get names
+    picked: list[str] = Field(default_factory=list, max_length=30)  # always named and ringed
+
+    @field_validator("names", mode="before")
+    @classmethod
+    def _names(cls, v: Any) -> Any:
+        return v if v in ("auto", "all", "none") else "auto"
 
     @field_validator("type", mode="before")
     @classmethod
     def _old_types(cls, v: Any) -> Any:
         # old links said "table"; anything unknown means "pick one for me"
-        return v if v in ("bar", "line", "scatter", "heatmap") else "auto"
+        return v if v in ("bar", "line", "scatter", "heatmap", "histogram") else "auto"
+
+    @field_validator("stack", mode="before")
+    @classmethod
+    def _stack(cls, v: Any) -> Any:
+        return v if v in ("none", "stack", "pct") else "none"
 
 
 class PivotSpec(BaseModel):

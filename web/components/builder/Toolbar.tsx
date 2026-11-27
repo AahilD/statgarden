@@ -8,6 +8,14 @@ import { usePopover } from "@/lib/usePopover";
 
 const SEASON_TYPES = ["Regular Season", "Play-In", "Playoffs"];
 
+const clearTypes = (s: PivotSpec): PivotSpec => ({ ...s, filters: s.filters.filter((f) => f.field !== "season_type") });
+
+/** Toggle one season type; picking all of them is the same as no filter, so it goes back to All. */
+function pickType(s: PivotSpec, type: string): PivotSpec {
+  const next = toggleIn(s, "season_type", type);
+  return filterValue(next, "season_type").length === SEASON_TYPES.length ? clearTypes(next) : next;
+}
+
 export function Toolbar(p: {
   spec: PivotSpec;
   setSpec: (fn: (s: PivotSpec) => PivotSpec) => void;
@@ -22,6 +30,7 @@ export function Toolbar(p: {
   const seasons = [...new Set(p.seasons.map((s) => s.season))].sort().reverse();
   const picked = filterValue(p.spec, "season") as string[];
   const types = filterValue(p.spec, "season_type") as string[];
+  const allTypes = types.length === 0 || SEASON_TYPES.every((t) => types.includes(t));
 
   async function share() {
     const url = `${window.location.origin}/lab?v=${encodeSpec(p.spec)}`;
@@ -35,62 +44,64 @@ export function Toolbar(p: {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-x-7 gap-y-3">
-      <h1 className="title-caps text-2xl leading-none">Lab</h1>
-
-      {p.datasets.length > 1 && <DatasetPicker datasets={p.datasets} value={p.spec.dataset} onPick={p.onDataset} />}
-
-      <div className="flex items-center gap-2">
-        <span className="label-mono">Season</span>
-        <SeasonPicker
-          seasons={seasons}
-          picked={picked}
-          onToggle={(season) => p.setSpec((x) => toggleIn(x, "season", season))}
-        />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="label-mono">Type</span>
-        <div className="flex flex-wrap gap-1.5">
-          {SEASON_TYPES.map((t) => (
-            <Toggle key={t} on={types.includes(t)} onClick={() => p.setSpec((x) => toggleIn(x, "season_type", t))}>
-              {t}
-            </Toggle>
-          ))}
+    <div className="grid gap-4">
+      <div className="flex items-center gap-3">
+        <h1 className="title-caps text-2xl leading-none">Lab</h1>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={p.onFocus}
+            aria-pressed={p.focused}
+            title={p.focused ? "Bring back the field list and builder" : "Hide the field list and builder so the table gets the space"}
+            className="hidden rounded-btn border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:border-line-strong hover:bg-sunken md:inline-block"
+          >
+            {p.focused ? "Show builder" : "Focus table"}
+          </button>
+          <button
+            type="button"
+            onClick={share}
+            className="lift rounded-btn bg-green px-3.5 py-1.5 text-sm font-medium text-on-color hover:brightness-110"
+          >
+            {copied ? "Link copied" : "Copy link"}
+          </button>
         </div>
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
-        <label className="flex items-center gap-2 text-sm text-ink-2">
-          <span className="label-mono">Top</span>
-          <select
-            value={p.spec.limit}
-            onChange={(e) => p.setSpec((x) => ({ ...x, limit: Number(e.target.value) }))}
-            className="rounded-btn border border-line bg-surface px-2 py-1.5 font-mono text-sm text-ink"
-          >
-            {[...new Set([10, 25, 50, 100, 250, 500, p.spec.limit])].sort((a, b) => a - b).map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
+      {/* what the view is drawn from: one bar, kept in focus mode so season and type stay one click away */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-card border border-line bg-surface px-3 py-2 sm:gap-x-0">
+        {p.datasets.length > 1 && <DatasetPicker datasets={p.datasets} value={p.spec.dataset} onPick={p.onDataset} />}
+
+        <div className="flex items-center gap-2 sm:ml-3 sm:border-l sm:border-line sm:pl-4">
+          <span className="label-mono">Season</span>
+          <SeasonPicker
+            seasons={seasons}
+            picked={picked}
+            onToggle={(season) => p.setSpec((x) => toggleIn(x, "season", season))}
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 sm:ml-4 sm:border-l sm:border-line sm:pl-4">
+          <span className="label-mono">Type</span>
+          <div className="flex flex-wrap gap-1.5">
+            {/* no type filter means every type, so say so with its own chip */}
+            <Toggle on={allTypes} onClick={() => p.setSpec(clearTypes)}>
+              All
+            </Toggle>
+            {SEASON_TYPES.map((t) => (
+              <Toggle key={t} on={!allTypes && types.includes(t)} onClick={() => p.setSpec((x) => pickType(x, t))}>
+                {/* "Regular" on phones so all four chips fit on one row */}
+                {t === "Regular Season" ? (
+                  <>
+                    <span className="sm:hidden">Regular</span>
+                    <span className="hidden sm:inline">Regular Season</span>
+                  </>
+                ) : (
+                  t
+                )}
+              </Toggle>
             ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          onClick={p.onFocus}
-          aria-pressed={p.focused}
-          title={p.focused ? "Bring back the field list and builder" : "Hide the field list and builder so the table gets the space"}
-          className="hidden rounded-btn border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:bg-bg md:inline-block"
-        >
-          {p.focused ? "Show builder" : "Focus table"}
-        </button>
-        <button
-          type="button"
-          onClick={share}
-          className="lift rounded-btn bg-green px-3.5 py-1.5 text-sm font-medium text-on-color hover:brightness-110"
-        >
-          {copied ? "Link copied" : "Copy link"}
-        </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -104,7 +115,7 @@ function Toggle(p: { on: boolean; onClick: () => void; children: React.ReactNode
       onClick={p.onClick}
       className={`rounded-full border px-3 py-1 font-mono text-xs ${
         // seasons and season types are filters, so they're red like the Filters well
-        p.on ? "border-red bg-red text-on-color" : "border-line text-ink-2 hover:border-line-strong hover:text-ink"
+        p.on ? "border-red bg-red text-on-color" : "border-line bg-surface text-ink-2 hover:border-line-strong hover:text-ink"
       }`}
     >
       {p.children}
@@ -132,7 +143,7 @@ function SeasonPicker(p: { seasons: string[]; picked: string[]; onToggle: (s: st
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         className={`flex items-center gap-2 rounded-full border px-3 py-1 font-mono text-xs ${
-          picked.length ? "border-red bg-red text-on-color" : "border-line text-ink hover:border-line-strong"
+          picked.length ? "border-red bg-red text-on-color" : "border-line bg-surface text-ink hover:border-line-strong"
         }`}
       >
         {label}
@@ -148,7 +159,7 @@ function SeasonPicker(p: { seasons: string[]; picked: string[]; onToggle: (s: st
         >
           {p.seasons.map((s) => (
             <li key={s} role="option" aria-selected={p.picked.includes(s)}>
-              <label className="flex cursor-pointer items-center gap-2.5 rounded-chip px-2 py-1.5 font-mono text-sm hover:bg-bg">
+              <label className="flex cursor-pointer items-center gap-2.5 rounded-chip px-2 py-1.5 font-mono text-sm hover:bg-sunken">
                 <input
                   type="checkbox"
                   checked={p.picked.includes(s)}
@@ -190,7 +201,7 @@ function DatasetPicker(p: { datasets: DatasetMeta[]; value: string; onPick: (id:
           setPhoneTop(window.innerWidth < 640 ? r.bottom : null);
           setOpen((o) => !o);
         }}
-        className="flex items-center gap-2.5 rounded-btn border border-line bg-surface px-3 py-1.5 text-sm hover:border-line-strong"
+        className="flex items-center gap-2.5 rounded-btn px-2 py-1 text-sm hover:bg-sunken"
       >
         <span className="label-mono">Data</span>
         <span className="font-medium text-ink">{current?.label ?? "Pick one"}</span>
@@ -205,12 +216,15 @@ function DatasetPicker(p: { datasets: DatasetMeta[]; value: string; onPick: (id:
           style={phoneTop === null ? undefined : { position: "fixed", top: phoneTop, left: 16, right: 16, width: "auto" }}
           className="absolute left-0 top-full z-30 mt-1.5 w-80 rounded-card border border-line bg-surface-2 p-1.5 shadow-xl"
         >
-          {PERIODS.map((period) => {
+          {PERIODS.map((period, gi) => {
             const list = p.datasets.filter((d) => d.period === period.id);
             if (!list.length) return null;
             return (
-              <div key={period.id} role="group" aria-label={period.label} className="mb-1 last:mb-0">
-                <div className="label-mono px-2 pb-1 pt-1.5">{period.label}</div>
+              <div key={period.id} role="group" aria-label={period.label} className={gi > 0 ? "mt-1.5 border-t border-line pt-1.5" : ""}>
+                <div className="flex items-center gap-2 px-2 pb-1.5 pt-1">
+                  <i aria-hidden className={`h-3.5 w-1 rounded-full ${period.id === "game" ? "bg-orange" : "bg-blue"}`} />
+                  <span className="title-caps text-[12px] text-ink">{period.label}</span>
+                </div>
                 {list.map((d) => {
                   const on = d.id === p.value;
                   return (
@@ -223,7 +237,7 @@ function DatasetPicker(p: { datasets: DatasetMeta[]; value: string; onPick: (id:
                         setOpen(false);
                         if (!on) p.onPick(d.id);
                       }}
-                      className={`block w-full rounded-chip px-2 py-1.5 text-left hover:bg-bg ${on ? "bg-bg" : ""}`}
+                      className={`block w-full rounded-chip px-2 py-1.5 text-left hover:bg-sunken ${on ? "bg-sunken" : ""}`}
                     >
                       <span className={`flex items-center gap-2 text-sm font-medium ${on ? "text-accent-ink" : "text-ink"}`}>
                         {d.label}

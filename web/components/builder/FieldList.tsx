@@ -6,6 +6,8 @@ import type { FieldMeta } from "@/lib/api";
 import type { SavedCalc } from "@/lib/savedCalcs";
 
 export function FieldList(p: {
+  /** fields already in the view: their groups start open */
+  inUse: string[];
   groups: string[];
   fields: FieldMeta[];
   loading: boolean;
@@ -20,8 +22,18 @@ export function FieldList(p: {
   onForgetSaved: (label: string) => void;
 }) {
   const [q, setQ] = useState("");
-  // groups start closed, except the two most used
-  const [open, setOpen] = useState<Set<string>>(new Set(["Player", "Box score"]));
+  // which groups are open; null until the person opens or closes one, so the starting set can wait for the fields
+  const [picked, setOpen] = useState<Set<string> | null>(null);
+  const startOpen = useMemo(() => {
+    const used = new Set(p.inUse);
+    const groups = new Set(p.fields.filter((f) => used.has(f.id)).map((f) => f.group));
+    // nothing in the view yet: open the first group so the list doesn't start as a wall of closed headings
+    if (groups.size === 0 && p.groups[0]) groups.add(p.groups[0]);
+    return groups;
+    // only the view as it was when the list opened: adding or removing a field shouldn't fold groups away
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.fields, p.groups]);
+  const open = picked ?? startOpen;
 
   const byGroup = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -42,7 +54,7 @@ export function FieldList(p: {
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search fields"
         aria-label="Search fields"
-        className="mt-3 w-full rounded-btn border border-line bg-bg px-3 py-2 text-sm placeholder:text-ink-2 focus:border-accent focus:outline-none"
+        className="mt-3 w-full rounded-btn border border-line bg-sunken px-3 py-2 text-sm placeholder:text-ink-2 focus:border-accent focus:outline-none"
       />
       {p.loading && <p className="mt-4 text-sm text-ink-2">Loading fields…</p>}
       {p.error && <p className="mt-4 text-sm text-red">{p.error}</p>}
@@ -71,7 +83,7 @@ export function FieldList(p: {
                     onClick={() => p.onEditCalc(f.id)}
                     aria-label={`Edit ${f.label}`}
                     title="Edit"
-                    className="grid h-8 w-7 shrink-0 place-items-center rounded-chip text-ink-2 hover:bg-bg hover:text-ink"
+                    className="grid h-8 w-7 shrink-0 place-items-center rounded-chip text-ink-2 hover:bg-sunken hover:text-ink"
                   >
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
@@ -104,7 +116,7 @@ export function FieldList(p: {
                       onClick={() => p.onForgetSaved(c.label)}
                       aria-label={`Forget ${c.label}`}
                       title="Remove from saved"
-                      className="grid h-8 w-7 shrink-0 place-items-center rounded-chip text-ink-2 hover:bg-bg hover:text-ink"
+                      className="grid h-8 w-7 shrink-0 place-items-center rounded-chip text-ink-2 hover:bg-sunken hover:text-ink"
                     >
                       ×
                     </button>
@@ -125,7 +137,7 @@ export function FieldList(p: {
                 aria-expanded={shown}
                 onClick={() =>
                   setOpen((s) => {
-                    const n = new Set(s);
+                    const n = new Set(s ?? startOpen);
                     if (n.has(group)) n.delete(group);
                     else n.add(group);
                     return n;
@@ -188,7 +200,7 @@ export function FieldPill({ field, floating }: { field: FieldMeta; floating?: bo
     <div
       className={`lift flex items-center gap-2 rounded-chip border px-2.5 py-1.5 text-sm ${
         field.available
-          ? "cursor-grab border-line bg-bg hover:border-line-strong"
+          ? "cursor-grab border-line bg-sunken hover:border-line-strong"
           : "cursor-not-allowed border-dashed border-line text-ink-2 opacity-60"
       } ${floating ? "cursor-grabbing border-2 border-ink-2 shadow-xl" : ""}`}
     >

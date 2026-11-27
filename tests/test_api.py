@@ -28,6 +28,14 @@ def test_health():
     assert client.get("/health").json()["ok"] is True
 
 
+def test_teams_have_full_names():
+    teams = {t["abbr"]: t["name"] for t in client.get("/meta/teams").json()}
+    assert len(teams) == 30
+    assert teams["DEN"] == "Denver Nuggets"
+    fields = {f["id"]: f for f in client.get("/meta/fields").json()["fields"]}
+    assert fields["team"]["names"] == "team"
+
+
 def test_fields_lists_availability():
     fields = {f["id"]: f for f in client.get("/meta/fields").json()["fields"]}
     assert fields["pts"]["available"] is True
@@ -179,6 +187,126 @@ def test_how_the_shot_happened_splits_every_shot():
     for dim in ["shot_move", "assisted", "possession_start", "chance", "fast_break"]:
         rows = q(dataset="shots", filters=REG_2526, rows=[dim], values=[{"field": "fga"}])["rows"]
         assert sum(r["fga:total"] for r in rows) == total, dim
+
+
+def test_ranges_with_open_and_closed_ends():
+    def ppg(ends, lo=20, hi=25):
+        flt = {"field": "pts", "op": "between", "value": [lo, hi], "ends": ends, "scope": "group", "mode": "per_game"}
+        res = q(filters=REG_2526 + [flt], rows=["player"], values=[{"field": "pts", "mode": "per_game"}], limit=500)
+        return [r["pts:per_game"] for r in res["rows"]]
+
+    both = ppg("[]")
+    assert both and all(20 <= x <= 25 for x in both)
+    assert all(20 <= x < 25 for x in ppg("[)"))
+    assert all(20 < x < 25 for x in ppg("()"))
+    assert all(x >= 20 for x in ppg("[]", hi=None))  # open top: 20 and up
+    assert len(ppg("[]", hi=None)) >= len(both)
+
+
+def test_outside_a_range_and_two_filters_on_one_stat():
+    base = {"field": "pts", "op": "between", "value": [10, 30], "scope": "group", "mode": "per_game"}
+    out = q(
+        filters=REG_2526 + [{**base, "outside": True}],
+        rows=["player"],
+        values=[{"field": "pts", "mode": "per_game"}],
+        limit=1000,
+    )
+    ppg = [r["pts:per_game"] for r in out["rows"]]
+    assert ppg and all(x < 10 or x > 30 for x in ppg)
+    assert any(x > 30 for x in ppg) and any(x < 10 for x in ppg)
+    # the same stat twice: only games with 10+ points, then players averaging 20-25 in those games
+    both = q(
+        filters=REG_2526
+        + [{**base, "value": [20, 25]}, {"field": "pts", "op": "between", "value": [10, None], "scope": "game"}],
+        rows=["player"],
+        values=[{"field": "pts", "mode": "per_game"}],
+        limit=1000,
+    )
+    assert both["rows"] and all(20 <= r["pts:per_game"] <= 25 for r in both["rows"])
+
+
+def test_says_whether_more_rows_match():
+    few = q(filters=REG_2526, rows=["player"], values=[{"field": "pts"}], limit=10)
+    assert len(few["rows"]) == 10 and few["more"] is True
+    teams = q(dataset="team_game", filters=REG_2526, rows=["team"], values=[{"field": "pts"}], limit=50)
+    assert len(teams["rows"]) == 30 and teams["more"] is False
+    # with a column split the limit counts row groups, not cells
+    split = q(
+        dataset="team_game", filters=REG_2526, rows=["team"], columns=["venue"], values=[{"field": "pts"}], limit=5
+    )
+    assert len({r["d_team"] for r in split["rows"]}) == 5 and split["more"] is True
+    split_all = q(
+        dataset="team_game", filters=REG_2526, rows=["team"], columns=["venue"], values=[{"field": "pts"}], limit=30
+    )
+    assert len({r["d_team"] for r in split_all["rows"]}) == 30 and split_all["more"] is False
+
+
+def test_share_of_column_and_row():
+    # each player's shots by zone, as a share of that player's shots
+    flt = REG_2526 + [{"field": "player", "op": "in", "value": ["James Harden", "Luka Dončić"]}]
+    vals = [{"field": "fga", "mode": "pct_col"}, {"field": "fga", "mode": "total"}]
+    res = q(dataset="shots", filters=flt, rows=["shot_zone"], columns=["player"], values=vals, limit=25)
+    by_player: dict[str, list] = {}
+    for r in res["rows"]:
+        by_player.setdefault(r["d_player"], []).append(r)
+    assert len(by_player) == 2
+    for rows in by_player.values():
+        total = sum(r["fga:total"] for r in rows)
+        assert abs(sum(r["fga:pct_col"] for r in rows) - 1) < 1e-9
+        assert all(abs(r["fga:pct_col"] - r["fga:total"] / total) < 1e-9 for r in rows)
+    # showing fewer rows doesn't change the shares: they're taken over every zone
+    cut = q(dataset="shots", filters=flt, rows=["shot_zone"], columns=["player"], values=vals, limit=2)
+    full = {(r["d_shot_zone"], r["d_player"]): r["fga:pct_col"] for r in res["rows"]}
+    assert cut["more"] is True and all(full[(r["d_shot_zone"], r["d_player"])] == r["fga:pct_col"] for r in cut["rows"])
+    # % of row: across the two players, each zone adds up to 100%
+    rows = q(
+        dataset="shots",
+        filters=flt,
+        rows=["shot_zone"],
+        columns=["player"],
+        values=[{"field": "fga", "mode": "pct_row"}],
+        limit=25,
+    )["rows"]
+    zones: dict[str, float] = {}
+    for r in rows:
+        zones[r["d_shot_zone"]] = zones.get(r["d_shot_zone"], 0) + r["fga:pct_row"]
+    assert all(abs(v - 1) < 1e-9 for v in zones.values())
+    # no columns: share of the whole table
+    pts = q(filters=REG_2526, rows=["player"], values=[{"field": "pts", "mode": "pct_col"}], limit=5000)
+    assert abs(sum(r["pts:pct_col"] for r in pts["rows"]) - 1) < 1e-9
+    assert pts["values"][0]["format"] == ".1%"
+
+
+def test_shares_only_for_stats_that_add_up():
+    fields = {f["id"]: f for f in client.get("/meta/fields?dataset=shots").json()["fields"]}
+    assert "pct_col" in fields["fga"]["modes"] and "pct_col" not in fields["fg_pct"]["modes"]
+    r = client.post("/query", json={"rows": ["player"], "values": [{"field": "fg_pct", "mode": "pct_col"}]})
+    assert r.status_code == 400
+    flt = {"field": "pts", "op": ">", "value": 0.01, "scope": "group", "mode": "pct_col"}
+    r = client.post("/query", json={"rows": ["player"], "values": [{"field": "pts"}], "filters": [flt]})
+    assert r.status_code == 400
+
+
+def test_chart_settings_round_trip():
+    chart = {"view": "chart", "type": "histogram", "stack": "pct"}
+    r = client.post(
+        "/query", json={"filters": REG_2526, "rows": ["player"], "values": [{"field": "pts"}], "chart": chart}
+    )
+    assert r.status_code == 200
+    from api.spec import PivotSpec
+
+    assert PivotSpec(chart={"type": "pie", "stack": "sideways"}).chart.model_dump()["type"] == "auto"
+    assert PivotSpec(chart={"stack": "sideways"}).chart.stack == "none"
+    assert PivotSpec(chart={"bin": 2}).chart.bin == 2
+    assert PivotSpec(chart={"labels": True}).chart.labels is True
+    r = client.post("/query", json={"values": [{"field": "pts"}], "chart": {"bin": -1}})
+    assert r.status_code == 422
+
+
+def test_between_needs_one_end():
+    flt = {"field": "pts", "op": "between", "value": [None, None]}
+    r = client.post("/query", json={"filters": [flt], "rows": ["player"], "values": [{"field": "pts"}]})
+    assert r.status_code == 422
 
 
 def test_per_100_possessions():

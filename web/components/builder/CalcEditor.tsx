@@ -100,7 +100,7 @@ export function CalcEditor(p: {
           onChange={(e) => setLabel(e.target.value)}
           maxLength={40}
           placeholder="Points per minute"
-          className="mt-1 w-full rounded-btn border border-line bg-bg px-2.5 py-1.5 text-sm focus:border-accent focus:outline-none"
+          className="mt-1 w-full rounded-btn border border-line bg-sunken px-2.5 py-1.5 text-sm focus:border-accent focus:outline-none"
         />
       </label>
 
@@ -114,7 +114,7 @@ export function CalcEditor(p: {
           maxLength={200}
           spellCheck={false}
           placeholder="pts / min"
-          className="mt-1 w-full resize-y rounded-btn border border-line bg-bg px-2.5 py-1.5 font-mono text-sm focus:border-accent focus:outline-none"
+          className="mt-1 w-full resize-y rounded-btn border border-line bg-sunken px-2.5 py-1.5 font-mono text-sm focus:border-accent focus:outline-none"
         />
       </label>
       <p className="mt-1 min-h-[2.5em] text-xs" aria-live="polite">
@@ -146,7 +146,7 @@ export function CalcEditor(p: {
           onChange={(e) => setFind(e.target.value)}
           placeholder="Insert a field: search, e.g. rebounds"
           aria-label="Find a field to insert"
-          className="w-full rounded-btn border border-line bg-bg px-2.5 py-1.5 text-sm placeholder:text-ink-2 focus:border-accent focus:outline-none"
+          className="w-full rounded-btn border border-line bg-sunken px-2.5 py-1.5 text-sm placeholder:text-ink-2 focus:border-accent focus:outline-none"
         />
         {matches.length > 0 && (
           <ul className="absolute left-0 right-0 top-full z-30 mt-1 rounded-card border border-line bg-surface-2 p-1 shadow-xl">
@@ -155,7 +155,7 @@ export function CalcEditor(p: {
                 <button
                   type="button"
                   onClick={() => insert(f.id)}
-                  className="flex w-full items-center justify-between gap-2 rounded-chip px-2 py-1.5 text-left text-sm hover:bg-bg"
+                  className="flex w-full items-center justify-between gap-2 rounded-chip px-2 py-1.5 text-left text-sm hover:bg-sunken"
                 >
                   <span className="truncate">{f.label}</span>
                   <span className="font-mono text-[11px] text-ink-2">{f.id}</span>
@@ -171,7 +171,7 @@ export function CalcEditor(p: {
         <select
           value={format}
           onChange={(e) => setFormat(e.target.value as CalcFormat)}
-          className="mt-1 w-full rounded-btn border border-line bg-bg px-2 py-1.5 text-sm"
+          className="mt-1 w-full rounded-btn border border-line bg-sunken px-2 py-1.5 text-sm"
         >
           {CALC_FORMATS.map((f) => (
             <option key={f} value={f}>
@@ -186,7 +186,7 @@ export function CalcEditor(p: {
         <select
           value={better}
           onChange={(e) => setBetter(e.target.value as typeof better)}
-          className="mt-1 w-full rounded-btn border border-line bg-bg px-2 py-1.5 text-sm"
+          className="mt-1 w-full rounded-btn border border-line bg-sunken px-2 py-1.5 text-sm"
         >
           <option value="higher">Higher is better</option>
           <option value="lower">Lower is better</option>

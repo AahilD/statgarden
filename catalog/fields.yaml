@@ -162,6 +162,7 @@ fields:
     type: text
     key: team_id
     expr: team_abbreviation
+    names: team
     source: gamelog
     description: The player's team in that game (so traded players split correctly).
 
@@ -173,6 +174,7 @@ fields:
     type: text
     key: opp_team_id
     expr: opp_abbreviation
+    names: team
     source: derived
     description: The team they played against.
 

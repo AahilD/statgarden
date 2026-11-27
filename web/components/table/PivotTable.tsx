@@ -1,15 +1,15 @@
 "use client";
 
 import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { HeaderTip, type OpenTip, type Tip } from "@/components/table/HeaderTip";
-import { ShadeBar } from "@/components/table/ShadeBar";
 import type { FieldMeta, QueryResult } from "@/lib/api";
 import { formatValue } from "@/lib/format";
 import type { Wide, WideRow } from "@/lib/pivot";
 import type { PivotSpec } from "@/lib/spec";
 import { computeShades, shadeBackground } from "@/lib/shade";
 import { setSort } from "@/lib/specOps";
+import { useTeamNames } from "@/lib/teams";
 import { SERIES, TONE } from "@/lib/tones";
 
 const features = tableFeatures({});
@@ -24,7 +24,6 @@ export function PivotTable(p: {
   fields?: Map<string, FieldMeta>;
 }) {
   const { wide } = p;
-  const hasSplit = p.result.column_fields.length > 0 && wide.groups.length > 1;
   const shades = useMemo(() => computeShades(p.result, wide, p.spec), [p.result, wide, p.spec]);
   const shadeStyle = (colId: string, rowIndex: number): React.CSSProperties | undefined => {
     const bg = shadeBackground(shades.get(colId)?.get(rowIndex), p.spec.shade);
@@ -59,8 +58,20 @@ export function PivotTable(p: {
 
   const sort = p.spec.sort[0] ?? (p.result.values[0] ? { by: p.result.values[0].key, dir: "desc" } : undefined);
 
-  const { result, setSpec } = p;
+  const { result, setSpec, fields } = p;
+  const teamNames = useTeamNames();
   const columns = useMemo(() => {
+    // team abbreviations: full name on wider screens, abbreviation on phones
+    const spell = (id: string, v: unknown) => {
+      const full = typeof v === "string" && fields?.get(id)?.names === "team" ? teamNames.get(v) : undefined;
+      if (!full) return v as React.ReactNode;
+      return (
+        <>
+          <span className="sm:hidden">{v as string}</span>
+          <span className="hidden sm:inline">{full}</span>
+        </>
+      );
+    };
     const { row_fields, column_fields, values } = result;
     const sortHeader = (id: string, text: string, numeric: boolean, full: string) => {
       const active = sort?.by === id;
@@ -86,7 +97,7 @@ export function PivotTable(p: {
       helper.accessor((r) => r.dims[f.id], {
         id: `dim:${f.id}`,
         header: () => sortHeader(f.id, f.label, false, f.label),
-        cell: (c) => c.getValue(),
+        cell: (c) => spell(f.id, c.getValue()),
       }),
     );
     const valueCols = (groupId: string) =>
@@ -106,15 +117,23 @@ export function PivotTable(p: {
         helper.group({
           id: `group:${g.id}`,
           header: () => (
-            <span className={`block rounded-chip px-2 py-1 ${TONE[SERIES[i % SERIES.length]].block}`}>{g.labels.join(" · ")}</span>
+            <span className={`block rounded-chip px-2 py-1 ${TONE[SERIES[i % SERIES.length]].block}`}>
+              {g.labels.map((l, j) => (
+                <span key={j}>
+                  {j > 0 && " · "}
+                  {spell(column_fields[j]?.id ?? "", l)}
+                </span>
+              ))}
+            </span>
           ),
           columns: valueCols(g.id),
         }),
       ),
     ]);
-  }, [wide.groups, sort?.by, sort?.dir, result, setSpec]);
+  }, [wide.groups, sort?.by, sort?.dir, result, setSpec, fields, teamNames]);
 
   const table = useTable({ features, columns, data: wide.rows });
+  const headRef = usePinnedHead();
 
   if (wide.rows.length === 0) {
     return <p className="px-4 py-16 text-center text-sm text-ink-2">No games match these filters.</p>;
@@ -122,10 +141,9 @@ export function PivotTable(p: {
 
   return (
     <div>
-      <ShadeBar result={p.result} spec={p.spec} setSpec={p.setSpec} hasSplit={hasSplit} firstSplit={wide.groups[0]?.labels.join(" · ")} />
-    <div className="max-h-[70vh] overflow-auto">
+    <div className="overflow-x-auto">
       <table className="w-full border-collapse text-sm">
-        <thead className="sticky top-0 z-10 bg-surface">
+        <thead ref={headRef} className="relative z-20 bg-surface will-change-transform">
           {table.getHeaderGroups().map((hg) => (
             <tr key={hg.id}>
               {hg.headers.map((h) => {
@@ -158,7 +176,7 @@ export function PivotTable(p: {
         </thead>
         <tbody>
           {table.getRowModel().rows.map((row) => (
-            <tr key={row.id} className="border-b border-line/70 hover:bg-bg/60">
+            <tr key={row.id} className="border-b border-line/70 hover:bg-sunken/60">
               {row.getAllCells().map((cell) => {
                 const id = cell.column.id;
                 const isValue = id.includes("|");
@@ -189,4 +207,41 @@ export function PivotTable(p: {
       <HeaderTip tip={tip} />
     </div>
   );
+}
+
+/**
+ * Keeps the header row in view while the page scrolls past the table.
+ * CSS sticky can't do it: the table sits in a sideways-scrolling box, and sticky
+ * only works inside the nearest scrolling box. So the header is slid down instead,
+ * stopping under the site header and never past the table's last row.
+ */
+function usePinnedHead() {
+  const ref = useRef<HTMLTableSectionElement>(null);
+  useEffect(() => {
+    let frame = 0;
+    const place = () => {
+      frame = 0;
+      const head = ref.current;
+      const table = head?.closest("table");
+      if (!head || !table) return;
+      const siteHeader = document.querySelector("body header");
+      const top = siteHeader ? siteHeader.getBoundingClientRect().bottom : 0;
+      const t = table.getBoundingClientRect();
+      const shift = Math.min(Math.max(0, top - t.top), Math.max(0, t.height - head.offsetHeight));
+      head.style.transform = shift ? `translateY(${shift}px)` : "";
+      head.classList.toggle("shadow-[0_1px_0_var(--border)]", shift > 0);
+    };
+    const queue = () => {
+      if (!frame) frame = requestAnimationFrame(place);
+    };
+    place();
+    window.addEventListener("scroll", queue, { passive: true });
+    window.addEventListener("resize", queue);
+    return () => {
+      window.removeEventListener("scroll", queue);
+      window.removeEventListener("resize", queue);
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+  return ref;
 }

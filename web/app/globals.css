@@ -10,6 +10,7 @@
   --surface-2: #1c1c20;   /* overlays */
   --border: #232326;
   --border-strong: #34343a;
+  --sunken: #0b0b0c;      /* inputs, chips, toggles, hover fills inside cards */
   --text: #f4f4f5;
   --text-2: #a1a1aa;
 
@@ -38,11 +39,13 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #fcfcfc;          /* Porcelain */
-  --surface: #ffffff;
-  --surface-2: #f6f1ea;
-  --border: #e7e7e9;
-  --border-strong: #d4d4d8;
+  /* light neutrals are palette swatches as they are: Warm Sand page, Porcelain cards */
+  --bg: #d8c7b5;          /* Warm Sand */
+  --surface: #ffffff;     /* white cards */
+  --surface-2: #fcfcfc;   /* Porcelain: menus and popovers */
+  --sunken: #fcfcfc;      /* Porcelain: inputs, chips, toggles, hover fills inside cards */
+  --border: #d8c7b5;      /* Warm Sand */
+  --border-strong: #8c6d53; /* Warm Mocha */
   --text: #18181b;
   --text-2: #52525b;
   --accent-ink: #b8501a;  /* #F88436 is too faint as text on white */
@@ -54,6 +57,7 @@
 
 @theme inline {
   --color-bg: var(--bg);
+  --color-sunken: var(--sunken);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
   --color-line: var(--border);

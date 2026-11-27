@@ -1,6 +1,6 @@
 // Pure edits to a PivotSpec. The builder only changes the view through these.
 import type { FieldMeta } from "./api";
-import { LIMITS, type ChartView, type Filter, type Mode, type PivotSpec } from "./spec";
+import { LIMITS, SHARE_MODES, type ChartView, type Filter, type Mode, type PivotSpec } from "./spec";
 
 export type TableWell = "rows" | "columns" | "values" | "filters";
 export type ChartWell = "x" | "y" | "color";
@@ -37,9 +37,18 @@ export function addField(spec: PivotSpec, field: FieldMeta, well: Well): PivotSp
     return { ...spec, values: [...spec.values, { field: id, mode: field.default_mode ?? undefined }] };
   }
   if (well === "filters") {
-    if (spec.filters.some((f) => f.field === id)) return spec;
+    const same = spec.filters.filter((f) => f.field === id);
+    // a list of values only needs one filter; a number can have a few (e.g. games with 30+, and a 20-25 average)
+    if (field.kind === "dimension" ? same.length > 0 : same.length >= MAX_FILTERS_PER_NUMBER) return spec;
+    // a number that's already in Values starts as a range on that row's number (e.g. 20-25 points per game),
+    // unless there's already one of those; anything else starts on each game
+    const inValues = spec.values.find((v) => v.field === id);
     const filter: Filter =
-      field.kind === "dimension" ? { field: id, op: "in", value: [] } : { field: id, op: ">=", value: null };
+      field.kind === "dimension"
+        ? { field: id, op: "in", value: [] }
+        : inValues && !same.some((f) => f.scope === "group")
+          ? { field: id, op: "between", value: [null, null], ends: "[]", scope: "group", mode: (inValues.mode && !SHARE_MODES.includes(inValues.mode) ? inValues.mode : field.default_mode) ?? undefined }
+          : { field: id, op: "between", value: [null, null], ends: "[]" };
     return { ...spec, filters: [...spec.filters, filter] };
   }
   // rows / columns: a field lives in one of them at a time
@@ -74,6 +83,17 @@ export function setMode(spec: PivotSpec, index: number, mode: Mode): PivotSpec {
   return { ...spec, values, sort };
 }
 
+export const MAX_FILTERS_PER_NUMBER = 3;
+
+/** Change the filter at this position (a number can have more than one filter, so position, not field). */
+export function setFilterAt(spec: PivotSpec, index: number, patch: Partial<Filter>): PivotSpec {
+  return { ...spec, filters: spec.filters.map((f, i) => (i === index ? { ...f, ...patch } : f)) };
+}
+
+export function removeFilterAt(spec: PivotSpec, index: number): PivotSpec {
+  return { ...spec, filters: spec.filters.filter((_, i) => i !== index) };
+}
+
 export function setFilter(spec: PivotSpec, field: string, patch: Partial<Filter>): PivotSpec {
   return { ...spec, filters: spec.filters.map((f) => (f.field === field ? { ...f, ...patch } : f)) };
 }
@@ -100,7 +120,13 @@ export function setSort(spec: PivotSpec, by: string): PivotSpec {
 
 export function isComplete(f: Filter): boolean {
   if (f.op === "in" || f.op === "not_in") return Array.isArray(f.value) && f.value.length > 0;
-  if (f.op === "between") return Array.isArray(f.value) && f.value.every((x) => typeof x === "number");
+  if (f.op === "between")
+    return (
+      Array.isArray(f.value) &&
+      f.value.length === 2 &&
+      f.value.every((x) => x === null || typeof x === "number") &&
+      f.value.some((x) => typeof x === "number")
+    );
   return f.value !== null && f.value !== undefined && f.value !== "";
 }
 

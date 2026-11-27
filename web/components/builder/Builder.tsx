@@ -21,11 +21,13 @@ import { CalcEditor } from "./CalcEditor";
 import { forgetCalc, rememberCalc, useSavedCalcs, type SavedCalc } from "@/lib/savedCalcs";
 import { FieldList, FieldPill } from "./FieldList";
 import { Toolbar } from "./Toolbar";
-import { ChartWells, Chevron, Wells, WellsSummary } from "./Wells";
+import { Chevron, Wells, WellsSummary } from "./Wells";
 import { usePanels } from "@/lib/usePanels";
-import { ChartPanel, ViewSwitch, csvAction } from "./ChartPanel";
+import { ChartPanel, ResultFooter, ViewSwitch, csvAction } from "./ChartPanel";
 import { PivotTable } from "@/components/table/PivotTable";
 import { toWide } from "@/lib/pivot";
+
+const ALL_ROWS = 5000; // the most the API returns
 
 export function Builder() {
   const params = useSearchParams();
@@ -79,6 +81,16 @@ export function Builder() {
     queryKey: ["query", sent],
     queryFn: () => api.query(sent),
     enabled: sent.values.length > 0 && fieldsQ.isSuccess,
+    placeholderData: keepPreviousData,
+  });
+
+  // a histogram counts every match, not just the rows the table shows, so it gets its own query
+  const histogram = spec.chart.type === "histogram" && spec.chart.view !== "table";
+  const histSent = useMemo(() => ({ ...sent, limit: ALL_ROWS }), [sent]);
+  const histQ = useQuery({
+    queryKey: ["query", histSent],
+    queryFn: () => api.query(histSent),
+    enabled: histogram && sent.values.length > 0 && fieldsQ.isSuccess,
     placeholderData: keepPreviousData,
   });
 
@@ -136,7 +148,8 @@ export function Builder() {
               className="hidden h-40 flex-col items-center gap-2 rounded-card border border-line bg-surface py-3 text-ink-2 hover:text-ink md:sticky md:top-[78px] md:flex"
             >
               <Chevron right />
-              <span className="label-mono [writing-mode:vertical-rl]">Fields</span>
+              {/* reads bottom to top, like a book spine */}
+              <span className="title-caps rotate-180 text-[13px] text-ink [writing-mode:vertical-rl]">Fields</span>
             </button>
           )}
           <aside className={`relative md:sticky md:top-[78px] md:self-start ${panels.fields ? "" : "md:hidden"}`}>
@@ -145,7 +158,7 @@ export function Builder() {
               onClick={() => setPanels({ fields: false })}
               aria-label="Hide the field list"
               title="Hide the field list"
-              className="absolute right-2 top-2 z-10 hidden h-7 w-7 place-items-center rounded-btn text-ink-2 hover:bg-bg hover:text-ink md:grid"
+              className="absolute right-2 top-2 z-10 hidden h-7 w-7 place-items-center rounded-btn text-ink-2 hover:bg-sunken hover:text-ink md:grid"
             >
               <Chevron left />
             </button>
@@ -160,6 +173,8 @@ export function Builder() {
             </button>
             <div className={`${showFields ? "block" : "hidden"} md:block`}>
               <FieldList
+                key={spec.dataset}
+                inUse={fieldsInUse(spec)}
                 groups={fieldsQ.data?.groups ?? []}
                 fields={fieldsQ.data?.fields ?? []}
                 loading={fieldsQ.isLoading}
@@ -211,22 +226,15 @@ export function Builder() {
             ) : (
               <WellsSummary spec={spec} fields={fields} onExpand={() => setPanels({ builder: true })} />
             )}
-            <ViewSwitch
-              view={spec.chart.view}
-              setSpec={setSpec}
-              status={resultStatus(resultQ.isFetching, wide?.rows.length, resultQ.data?.elapsed_ms, resultQ.data?.cached)}
-              onCsv={csvAction(resultQ.data, wide, spec)}
-            />
+            <ViewSwitch spec={spec} setSpec={setSpec} result={resultQ.data} wide={wide} onCsv={csvAction(resultQ.data, wide, spec)} />
             {spec.chart.view !== "table" && (
               <ChartPanel
                 spec={spec}
                 setSpec={setSpec}
-                result={resultQ.data}
+                result={histogram ? histQ.data : resultQ.data}
                 fields={fields}
-                error={resultQ.error?.message}
-              >
-                <ChartWells spec={spec} setSpec={setSpec} fields={fields} dragging={dragging} />
-              </ChartPanel>
+                error={(histogram ? histQ.error : resultQ.error)?.message}
+              />
             )}
             {spec.chart.view !== "chart" && (
               <div className="overflow-hidden rounded-card border border-line bg-surface">
@@ -241,6 +249,16 @@ export function Builder() {
                 )}
               </div>
             )}
+            {spec.values.length > 0 && !resultQ.error && !(histogram && spec.chart.view === "chart") && (
+              <ResultFooter
+                count={wide?.rows.length}
+                limit={spec.limit}
+                more={resultQ.data?.more}
+                ms={resultQ.data?.elapsed_ms}
+                cached={resultQ.data?.cached}
+                loading={resultQ.isFetching}
+              />
+            )}
           </section>
         </div>
       </div>
@@ -249,14 +267,18 @@ export function Builder() {
   );
 }
 
-function resultStatus(fetching: boolean, count?: number, ms?: number, cached?: boolean) {
-  if (fetching) return "Working…";
-  if (count === undefined) return "";
-  return `${count.toLocaleString()} rows · ${cached ? "cached" : `${ms} ms`}`;
-}
-
 function Empty({ text, tone }: { text: string; tone?: "error" }) {
   return (
     <p className={`px-4 py-16 text-center text-sm ${tone === "error" ? "text-red" : "text-ink-2"}`}>{text}</p>
   );
+}
+
+/** Fields the view uses, so the field list can open their groups. Season and type live in the top bar. */
+function fieldsInUse(spec: PivotSpec): string[] {
+  return [
+    ...spec.values.map((v) => v.field),
+    ...spec.rows,
+    ...spec.columns,
+    ...spec.filters.map((f) => f.field).filter((f) => f !== "season" && f !== "season_type"),
+  ];
 }

@@ -15,7 +15,9 @@ from pydantic import BaseModel, Field, model_validator
 
 CATALOG_PATH = Path(__file__).resolve().parent.parent / "catalog" / "fields.yaml"
 
-Mode = Literal["total", "per_game", "per_36", "per_100"]
+Mode = Literal["total", "per_game", "per_36", "per_100", "pct_col", "pct_row"]
+# "show as a share" modes: worked out per query, never listed in the catalog
+SHARE_MODES = ("pct_col", "pct_row")
 
 
 class FieldDef(BaseModel):
@@ -39,6 +41,7 @@ class FieldDef(BaseModel):
     format: str | None = None
     higher_is_better: bool | None = None
     datasets: list[str] | None = None  # only these datasets (default: any whose table has the columns)
+    names: Literal["team"] | None = None  # values are abbreviations the site can spell out (see /meta/teams)
     hidden: bool = False  # a building block for other fields; not shown in the field list
     available: bool = True  # set at startup: works in at least one dataset
     available_in: set[str] = Field(default_factory=set, exclude=True)  # set at startup
@@ -147,4 +150,7 @@ def modes_in(cat: Catalog, f: FieldDef, ds: Dataset) -> list[str]:
         ok.remove("per_100")
     if "per_36" in ok and not (cat.field("min") and ds.id in cat.field("min").available_in):
         ok.remove("per_36")
-    return ok or ["total"]
+    ok = ok or ["total"]
+    if f.agg in ("sum", "count"):
+        ok += list(SHARE_MODES)  # anything that adds up can be shown as a share of its column or row
+    return ok

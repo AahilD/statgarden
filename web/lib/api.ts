@@ -17,6 +17,7 @@ export type FieldMeta = {
   default_mode: Mode | null;
   format: string | null;
   higher_is_better: boolean | null;
+  names?: "team" | null; // values are team abbreviations the site can spell out
   hidden?: boolean;
   available: boolean;
 };
@@ -47,6 +48,7 @@ export type ResultValue = {
 
 export type QueryResult = {
   rows: Record<string, string | number | null>[];
+  more?: boolean; // more rows match than were asked for
   row_fields: ResultField[];
   column_fields: ResultField[];
   values: ResultValue[];
@@ -79,6 +81,7 @@ export const api = {
     get<{ groups: string[]; fields: FieldMeta[] }>(`/meta/fields?dataset=${dataset}`),
   seasons: (dataset = "player_game") => get<SeasonMeta[]>(`/meta/seasons?dataset=${dataset}`),
   datasets: () => get<DatasetMeta[]>("/meta/datasets"),
+  teams: () => get<{ abbr: string; name: string }[]>("/meta/teams"),
   values: (field: string, q = "", dataset = "player_game") =>
     get<{ field: string; values: (string | number)[] }>(
       `/meta/values?field=${encodeURIComponent(field)}&q=${encodeURIComponent(q)}&dataset=${dataset}&limit=300`,

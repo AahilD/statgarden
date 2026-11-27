@@ -67,6 +67,13 @@ def datasets():
     return [d.model_dump() for d in catalog.datasets]
 
 
+@app.get("/meta/teams")
+def teams():
+    """Team abbreviations and full names, so tables can spell them out on wide screens."""
+    rows = db.cursor().execute("SELECT team_abbreviation, team_name FROM dim_team ORDER BY team_name").fetchall()
+    return [{"abbr": a, "name": n} for a, n in rows]
+
+
 @app.get("/meta/fields")
 def fields(dataset: str = "player_game"):
     db.cursor()  # opens the newest file, which also refreshes which fields are available
@@ -186,6 +193,14 @@ def query(spec: PivotSpec):
     except Exception as err:  # a catalog expression that doesn't work on this data
         raise HTTPException(500, f"query failed: {str(err).splitlines()[0]}") from err
     elapsed = (time.perf_counter() - t0) * 1000
+    # the SQL fetched one row (or row group) past the limit, only to learn whether there are more
+    if rows and "__more" in rows[0]:
+        more = bool(rows[0]["__more"])
+        for r in rows:
+            del r["__more"]
+    else:
+        more = len(rows) > q.limit
+        rows = rows[: q.limit]
 
     def field_meta(fid: str) -> dict:
         f = catalog.field(fid)
@@ -193,6 +208,7 @@ def query(spec: PivotSpec):
 
     result = {
         "rows": rows,
+        "more": more,  # more rows match than were asked for
         "row_fields": [field_meta(f) for f in q.row_dims],
         "column_fields": [field_meta(f) for f in q.col_dims],
         "values": [

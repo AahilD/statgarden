@@ -5,19 +5,19 @@ import type { Wide } from "@/lib/pivot";
 import type { PivotSpec, ShadeMode } from "@/lib/spec";
 
 export const SHADE_LABEL: Record<ShadeMode, string> = {
-  rank: "Rank in column",
-  average: "Distance from average",
-  split: "Across the split",
-  baseline: "Against the first split",
+  rank: "Rank",
+  average: "Vs average",
+  split: "Across split",
+  baseline: "Vs first split",
   off: "Off",
 };
 
 export const SHADE_HELP: Record<ShadeMode, string> = {
-  rank: "Each cell against the rest of its column, by rank.",
-  average: "How far each cell is from its column's average. Bigger gaps get stronger colour.",
-  split: "Each row on its own: every split (e.g. home and away) against that row's average across the splits.",
-  baseline: "Each row on its own: every split against the first one (e.g. away against home).",
-  off: "No shading.",
+  rank: "Against the rest of the column",
+  average: "How far from the column average",
+  split: "Each row's splits against each other",
+  baseline: "Each split against the first one",
+  off: "No colour",
 };
 
 /** Modes that compare across column splits only make sense when there are some. */

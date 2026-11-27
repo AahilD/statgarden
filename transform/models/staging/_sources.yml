@@ -161,7 +161,7 @@ sources:
   - name: raw_hustle_team__hustle_stats_team
     description: stats LeagueHustleStatsTeam
   - name: raw_lineups__lineups
-    description: stats LeagueDashLineups
+    description: 'stats LeagueDashLineups: one call per team; a league-wide call stops at 2,000 lineups'
   - name: raw_pbp__actions
     description: stats PlayByPlayV3
   - name: raw_pbp__game

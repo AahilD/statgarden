@@ -1,6 +1,7 @@
 // ECharts options from a chart model. No DOM here, so the Lab, the PNG export
 // and the server-side link preview all draw the same chart.
 import type { EChartsCoreOption } from "echarts/core";
+import { standouts } from "./standouts";
 import type { ChartModel } from "./chartModel";
 import { formatValue } from "./format";
 
@@ -60,7 +61,7 @@ export function chartHeight(model: ChartModel) {
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-type TipParam = { seriesName: string; name: string; value: unknown; color: string; data?: unknown };
+type TipParam = { seriesName: string; name: string; value: unknown; color: string; data?: unknown; marker?: string };
 
 export function chartOption(
   model: ChartModel,
@@ -89,6 +90,7 @@ export function chartOption(
       ? {
           legend: {
             type: "scroll",
+            data: names, // only the real series (not the picked-points layer)
             top: 0,
             icon: "roundRect",
             itemWidth: 12,
@@ -103,16 +105,17 @@ export function chartOption(
   if (model.kind === "scatter") {
     const fx = (v: number) => formatValue(v, model.x);
     const fy = (v: number) => formatValue(v, model.y);
-    // name the standouts: the points furthest up and to the right
+    // which points get names: the standouts (see lib/standouts.ts), all, or none, plus any picked
     const all = model.series.flatMap((s) => s.points);
-    const maxX = Math.max(...all.map((p) => p.x)) || 1;
-    const maxY = Math.max(...all.map((p) => p.y)) || 1;
+    const picked = new Set(model.picked);
     const named = new Set(
-      [...all]
-        .sort((a, b) => b.x / maxX + b.y / maxY - (a.x / maxX + a.y / maxY))
-        .slice(0, 6)
-        .map((p) => p.name),
+      model.names === "all"
+        ? all.map((p) => p.name)
+        : model.names === "none"
+          ? []
+          : standouts(all, model.dir),
     );
+    for (const n of picked) named.add(n);
     const names = model.series.map((s) => s.name);
     return {
       ...base,
@@ -128,19 +131,45 @@ export function chartOption(
           return `<b>${d.name}</b><br/>${model.x.label}: ${fx(d.value[0])}<br/>${model.y.label}: ${fy(d.value[1])}`;
         },
       },
-      series: model.series.map((s) => ({
-        type: "scatter",
-        name: s.name,
-        symbolSize: 9,
-        itemStyle: { opacity: 0.85, borderColor: t.surface, borderWidth: 1 },
-        emphasis: { focus: "series" },
-        labelLayout: { hideOverlap: true },
-        data: s.points.map((p) => ({
-          name: p.name,
-          value: [p.x, p.y],
-          label: { show: named.has(p.name), formatter: clip(p.name, 18), position: "top", color: t.text, fontSize: 11, fontFamily: t.sans },
+      series: [
+        ...model.series.map((s) => ({
+          type: "scatter",
+          name: s.name,
+          symbolSize: 9,
+          itemStyle: { opacity: 0.85, borderColor: t.surface, borderWidth: 1 },
+          emphasis: { focus: "series" },
+          labelLayout: { hideOverlap: true },
+          data: s.points
+            .filter((p) => !picked.has(p.name))
+            .map((p) => ({
+              name: p.name,
+              value: [p.x, p.y],
+              label: { show: named.has(p.name), formatter: p.name, position: "top", color: t.text, fontSize: 11, fontFamily: t.sans },
+            })),
         })),
-      })),
+        // picked points on top, ringed, and always named
+        ...(picked.size
+          ? [
+              {
+                type: "scatter",
+                name: "Picked",
+                symbolSize: 13,
+                z: 5,
+                labelLayout: { hideOverlap: false },
+                data: model.series.flatMap((s, i) =>
+                  s.points
+                    .filter((p) => picked.has(p.name))
+                    .map((p) => ({
+                      name: p.name,
+                      value: [p.x, p.y],
+                      itemStyle: { color: t.series[i % t.series.length], opacity: 1, borderColor: t.text, borderWidth: 2 },
+                      label: { show: true, formatter: p.name, position: "top", color: t.text, fontSize: 11, fontWeight: 600, fontFamily: t.sans },
+                    })),
+                ),
+              },
+            ]
+          : []),
+      ],
     };
   }
 
@@ -186,10 +215,13 @@ export function chartOption(
     };
   }
 
-  // bar and line
+  // bar, line and histogram
   const f = (v: number) => formatValue(v, model.value);
   const names = model.series.map((s) => s.name);
   const flip = isHorizontal(model);
+  const hist = model.kind === "histogram";
+  const stacked = (model.kind === "bar" && model.stack !== "none") || (hist && model.series.length > 1);
+  const pct = model.kind === "bar" && model.stack === "pct";
   const cat = {
     type: "category",
     data: model.categories,
@@ -199,26 +231,42 @@ export function chartOption(
       : { ...axisLabel, hideOverlap: true, formatter: (s: string) => clip(s, 14) },
     axisLine: { lineStyle: { color: t.line } },
     axisTick: { show: false },
+    ...(hist ? { name: model.categoryLabel, nameLocation: "middle", nameGap: 30, nameTextStyle: axisName } : {}),
   };
-  // single-series horizontal bars print their numbers on the bars, so the value axis can stay quiet
-  const labelled = flip && model.series.length === 1;
+  // single-series horizontal bars always print their numbers, so their value axis can stay quiet;
+  // other bars print them when "Numbers on bars" is on
+  const quietAxis = flip && model.series.length === 1;
+  const asked = model.kind !== "line" && model.labels;
+  const labelled = quietAxis || asked;
+  const onTop = asked && !flip && !stacked;
   const val = {
     type: "value",
-    axisLabel: { ...axisLabel, show: !labelled, hideOverlap: true, formatter: f },
+    axisLabel: { ...axisLabel, show: !quietAxis, hideOverlap: true, formatter: f },
     splitNumber: opts.narrow ? 3 : 5,
     splitLine,
     scale: model.kind === "line",
+    // 100% bars: quarters, written as whole percents
+    ...(pct ? { max: 1, interval: 0.25, axisLabel: { ...axisLabel, formatter: (v: number) => `${Math.round(v * 100)}%` } } : {}),
+    ...(hist ? { minInterval: 1, name: model.value.label, nameTextStyle: axisName } : {}),
   };
   const many = model.categories.length > 12;
   return {
     ...base,
     ...legend(names),
-    grid: { left: 8, right: flip ? 48 : 16, top: top(names), bottom: 8, containLabel: true },
+    grid: {
+      left: 8,
+      right: flip ? 48 : 16,
+      top: top(names) + (hist ? 10 : 0) + (onTop ? 10 : 0),
+      bottom: hist ? 28 : 8,
+      containLabel: true,
+    },
     tooltip: {
       ...base.tooltip,
       trigger: "axis",
       axisPointer: { type: model.kind === "line" ? "line" : "shadow", shadowStyle: { color: t.hover }, lineStyle: { color: t.text2 } },
       valueFormatter: (v: unknown) => (typeof v === "number" ? f(v) : "—"),
+      // a histogram reads "20–22 · Points per game" then "48 players", not the count beside the stat's name
+      ...(hist ? { formatter: (ps: TipParam[]) => histTip(ps, model.categoryLabel, model.rowLabel, t.text2) } : {}),
     },
     xAxis: flip ? val : cat,
     yAxis: flip ? cat : val,
@@ -239,18 +287,40 @@ export function chartOption(
             type: "bar",
             name: s.name,
             data: s.data,
-            barMaxWidth: 36,
-            itemStyle: { borderRadius: flip ? [0, 4, 4, 0] : [4, 4, 0, 0] },
+            ...(stacked ? { stack: "all" } : {}),
+            ...(hist ? { barCategoryGap: "6%" } : { barMaxWidth: stacked ? 48 : 36 }),
+            // stacked parts are split by a thin line of the card colour instead of rounded ends
+            itemStyle: stacked
+              ? { borderRadius: 0, borderColor: t.surface, borderWidth: 1 }
+              : { borderRadius: flip ? [0, 4, 4, 0] : [4, 4, 0, 0] },
             label: {
               show: labelled,
-              position: "right",
+              position: stacked ? "inside" : flip ? "right" : "top",
               fontFamily: t.mono,
-              fontSize: 11,
-              color: t.text2,
-              formatter: (p: TipParam) => (typeof p.value === "number" ? f(p.value) : ""),
+              fontSize: model.categories.length > 16 ? 10 : 11,
+              // inside a coloured part: white with a soft edge, so it reads on every series colour
+              ...(stacked
+                ? { color: "#FCFCFC", textBorderColor: "rgba(0,0,0,0.35)", textBorderWidth: 2 }
+                : { color: t.text2 }),
+              // empty bins and missing bars stay blank
+              formatter: (p: TipParam) => (typeof p.value === "number" && !(hist && p.value === 0) ? f(p.value) : ""),
             },
+            labelLayout: { hideOverlap: true },
             emphasis: { focus: "series" },
           },
     ),
   };
+}
+
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
+
+/** Histogram hover: the bin on top, then how many rows fall in it (per colour, plus a total). */
+function histTip(ps: TipParam[], binned: string, rowLabel: string, faint: string): string {
+  const many = (n: number) => `${n.toLocaleString("en-US")} ${(n === 1 ? rowLabel : `${rowLabel}s`).toLowerCase()}`;
+  const head = `<b>${esc(ps[0]?.name ?? "")}</b> <span style="color:${faint}">· ${esc(binned)}</span>`;
+  const n = (p: TipParam) => (typeof p.value === "number" ? p.value : 0);
+  if (ps.length === 1) return `${head}<br/>${many(n(ps[0]))}`;
+  const lines = ps.map((p) => `${p.marker ?? ""}${esc(p.seriesName)}: ${many(n(p))}`);
+  const total = ps.reduce((t, p) => t + n(p), 0);
+  return `${head}<br/>${lines.join("<br/>")}<br/><span style="color:${faint}">Total: ${many(total)}</span>`;
 }

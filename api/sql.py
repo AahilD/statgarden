@@ -25,14 +25,21 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from api.calc import CalcError, Node, fields_in, parse, to_sql
-from api.catalog import Catalog, Dataset, FieldDef, modes_in
+from api.catalog import SHARE_MODES, Catalog, Dataset, FieldDef, modes_in
 from api.spec import CALC_FORMATS, Calc, PivotSpec
 
 MAX_LONG_ROWS = 50_000
 
 # how each mode reads in labels ("Points per game") and short headers ("PTS/G")
-MODE_SUFFIX = {"total": "", "per_game": " per game", "per_36": " per 36", "per_100": " per 100 poss"}
-MODE_SHORT = {"total": "", "per_game": "/G", "per_36": "/36", "per_100": "/100"}
+MODE_SUFFIX = {
+    "total": "",
+    "per_game": " per game",
+    "per_36": " per 36",
+    "per_100": " per 100 poss",
+    "pct_col": ", % of column",
+    "pct_row": ", % of row",
+}
+MODE_SHORT = {"total": "", "per_game": "/G", "per_36": "/36", "per_100": "/100", "pct_col": " %col", "pct_row": " %row"}
 
 NUMBER_OPS = {"=", "!=", ">", ">=", "<", "<=", "between"}
 
@@ -61,6 +68,8 @@ class Query:
     row_dims: list[str]
     col_dims: list[str]
     values: list[ValueCol] = field(default_factory=list)
+    # rows asked for; the SQL fetches one more row (or row group) so the API can say whether there are more
+    limit: int = 0
 
 
 def _q(name: str) -> str:
@@ -69,6 +78,10 @@ def _q(name: str) -> str:
 
 def _dim_col(fid: str) -> str:
     return f"d_{fid}"
+
+
+def _share_col(fid: str, mode: str) -> str:
+    return _q(f"t_{mode}__{fid}")
 
 
 def _base_col(fid: str) -> str:
@@ -92,6 +105,7 @@ class Builder:
         # calcs are checked when used, so one that doesn't fit this dataset only matters if it's in the view
         self.calcs: dict[str, Calc] = {}
         self._parsed: dict[str, Node] = {}
+        self.shares: dict[tuple[str, str], str] = {}  # (field, pct mode) → SQL for one group's total
         for c in spec.calcs:
             if c.id in self.calcs:
                 raise SpecError(f"two calculated stats share the id {c.id}")
@@ -154,13 +168,17 @@ class Builder:
             return f"sum({col})" if agg_over else col
 
         games = b("__games")
-        if f.agg == "count":
+        if f.agg == "count" and mode not in SHARE_MODES:
             return games
         if f.agg == "weighted_avg":
             return f"{b(f.id + '__w')} / nullif({b(f.weight)}, 0)"
         if f.agg == "ratio":
             return "(" + _swap(f.formula, f.requires, lambda r: f"cast({b(r)} as double)") + ")"
         total = f"cast({b(f.id)} as double)"
+        if mode in SHARE_MODES:
+            if agg_over:  # re-totalling across columns (the top-N sort): rank by the plain total
+                return games if f.agg == "count" else total
+            return f"{self.share_base(f)} / nullif({_share_col(f.id, mode)}, 0)"
         if mode == "per_game":
             return f"{total} / nullif({games}, 0)"
         if mode == "per_36":
@@ -168,6 +186,10 @@ class Builder:
         if mode == "per_100":
             return f"{total} * 100 / nullif({b('poss')}, 0)"
         return total
+
+    def share_base(self, f: FieldDef) -> str:
+        """One group's plain total, the top half of a share."""
+        return _base_col("__games") if f.agg == "count" else f"cast({_base_col(f.id)} as double)"
 
     def row_sql(self, f: FieldDef) -> str:
         """SQL for one game's value of a field (for per-game filters)."""
@@ -219,15 +241,17 @@ class Builder:
         if mode not in allowed:
             raise SpecError(f"{f.label} can't be shown {MODE_SUFFIX.get(mode, mode).strip() or 'as a total'} here")
         self.need(f, mode)
+        if mode in SHARE_MODES:
+            self.shares[(f.id, mode)] = self.share_base(f)
         return ValueCol(
             value_key(f.id, mode),
             f.id,
             mode,
             f.label + MODE_SUFFIX[mode],
             f.short + MODE_SHORT[mode],
-            f.format,
+            ".1%" if mode in SHARE_MODES else f.format,
             f.agg,
-            f.higher_is_better,
+            None if mode in SHARE_MODES else f.higher_is_better,
             lambda agg_over, f=f, mode=mode: self.group_sql(f, mode, agg_over),
         )
 
@@ -242,10 +266,21 @@ def _swap(formula: str, names: list[str], sql: Callable[[str], str]) -> str:
     return out
 
 
-def _compare(expr: str, op: str, val: Any, where: list[str], params: list[Any]) -> None:
+def _compare(
+    expr: str, op: str, val: Any, where: list[str], params: list[Any], ends: str = "[]", outside: bool = False
+) -> None:
     if op == "between":
-        where.append(f"{expr} BETWEEN ? AND ?")
-        params += list(val)
+        lo, hi = val
+        parts = []
+        if lo is not None:
+            parts.append(f"{expr} {'>=' if ends[0] == '[' else '>'} ?")
+            params.append(lo)
+        if hi is not None:
+            parts.append(f"{expr} {'<=' if ends[1] == ']' else '<'} ?")
+            params.append(hi)
+        inside = " AND ".join(parts)
+        # outside: the number has to exist and miss the range (a blank isn't "under 10")
+        where.append(f"({expr} IS NOT NULL AND NOT ({inside}))" if outside else inside)
     else:
         where.append(f"{expr} {op} ?")
         params.append(val)
@@ -275,7 +310,7 @@ def build(spec: PivotSpec, cat: Catalog) -> Query:
     # whole-group numbers → applied after adding up (see `having` below)
     where: list[str] = []
     params: list[Any] = []
-    having: list[tuple[Callable[[str], str], str, Any]] = []
+    having: list[tuple[Callable[[str], str], str, Any, str, bool]] = []
     for flt in spec.filters:
         is_calc = flt.field in bld.calcs
         f = None if is_calc else bld.field(flt.field)
@@ -297,10 +332,12 @@ def build(spec: PivotSpec, cat: Catalog) -> Query:
             raise SpecError(f"{name}: number filters use =, ≠, <, ≤, >, ≥ or between")
         if flt.scope == "game":
             expr = bld.calc_row_sql(flt.field) if is_calc else bld.row_sql(f)
-            _compare(f"({expr})", flt.op, flt.value, where, params)
+            _compare(f"({expr})", flt.op, flt.value, where, params, flt.ends, flt.outside)
         else:
+            if flt.mode in SHARE_MODES:
+                raise SpecError(f"{name}: filter on the number itself, not its share")
             vc = bld.value(flt.field, None if is_calc else flt.mode)
-            having.append((vc.sql, flt.op, flt.value))
+            having.append((vc.sql, flt.op, flt.value, flt.ends, flt.outside))
 
     def select_for(fields: list[FieldDef]) -> list[tuple[str, str]]:
         """(expression, column name) pairs; a field with a key also groups by its key."""
@@ -339,26 +376,42 @@ def build(spec: PivotSpec, cat: Catalog) -> Query:
 
     def having_sql(agg_over: str) -> list[str]:
         out = []
-        for sql, op, val in having:
-            _compare(f"({sql(agg_over)})", op, val, out, params)
+        for sql, op, val, ends, outside in having:
+            _compare(f"({sql(agg_over)})", op, val, out, params, ends, outside)
         return out
 
     ctes = [f"grp AS (\n{grp}\n)"]
+    base = "grp"
+    if bld.shares:
+        # shares are taken over every matching group, before the top-N cut and number filters on rows
+        col_cols = [c for _, c in col_sel]
+        over = {"pct_col": col_cols, "pct_row": row_cols}
+        tots = [
+            f"sum({e}) OVER ({'PARTITION BY ' + ', '.join(over[m]) if over[m] else ''}) AS {_share_col(fid, m)}"
+            for (fid, m), e in bld.shares.items()
+        ]
+        ctes.append(f"shr AS (\n  SELECT *, {', '.join(tots)} FROM grp\n)")
+        base = "shr"
     final_where: list[str] = []
     if col_fields and row_cols:
         top_order = sort_expr.sql("sum") if isinstance(sort_expr, ValueCol) else sort_expr
         hv = having_sql("sum")  # a row group passes on its totals across every column
+        top_sort = f"{top_order} {sort_dir.upper()} {nulls}"
         ctes.append(
-            f"top AS (\n  SELECT {', '.join(row_cols)} FROM grp GROUP BY {', '.join(row_cols)}\n"
+            f"top AS (\n  SELECT {', '.join(row_cols)}, row_number() OVER (ORDER BY {top_sort}) AS __rk\n"
+            f"  FROM grp GROUP BY {', '.join(row_cols)}\n"
             + (f"  HAVING {' AND '.join(hv)}\n" if hv else "")
-            + f"  ORDER BY {top_order} {sort_dir.upper()} {nulls} LIMIT {spec.limit}\n)"
+            + f"  ORDER BY {top_sort} LIMIT {spec.limit + 1}\n)"
         )
-        source = f"grp SEMI JOIN top USING ({', '.join(row_cols)})"
+        # one extra row group is fetched only to learn whether there are more; it isn't returned
+        source = f"{base} JOIN top USING ({', '.join(row_cols)})"
+        final_where = [f"top.__rk <= {spec.limit}"]
+        final_values.append(f"(SELECT count(*) FROM top) > {spec.limit} AS __more")
         limit_sql = f"LIMIT {MAX_LONG_ROWS}"
     else:
         final_where = having_sql("")
-        source = "grp"
-        limit_sql = f"LIMIT {spec.limit}"
+        source = base
+        limit_sql = f"LIMIT {spec.limit + 1}"  # one extra, to learn whether there are more
 
     order = _q(sort_expr.key) if isinstance(sort_expr, ValueCol) else sort_expr
     sql = (
@@ -371,7 +424,7 @@ def build(spec: PivotSpec, cat: Catalog) -> Query:
         + "\n"
         f"{limit_sql}"
     )
-    return Query(sql, params, [f.id for f in row_fields], [f.id for f in col_fields], values)
+    return Query(sql, params, [f.id for f in row_fields], [f.id for f in col_fields], values, spec.limit)
 
 
 def check_formula(formula: str, dataset: str, cat: Catalog) -> list[str]:

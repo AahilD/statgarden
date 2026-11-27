@@ -71,3 +71,10 @@ models:
         data_tests: [unique, not_null]
       - name: team_id
         data_tests: [not_null]
+  - name: dim_team
+    description: One row per team, with its abbreviation and full name.
+    columns:
+      - name: team_id
+        data_tests: [unique, not_null]
+      - name: team_abbreviation
+        data_tests: [unique, not_null]

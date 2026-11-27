@@ -1,6 +1,7 @@
 // Server side: turn a shared link's ?v= into its numbers and chart, for link
 // previews (og:image) and the page title. Talks to FastAPI directly.
 import type { FieldMeta, QueryResult } from "./api";
+import { betterFor } from "./shade";
 import { buildChartModel, type ChartModel } from "./chartModel";
 import { decodeSpec, type PivotSpec } from "./spec";
 import { forQuery } from "./specOps";
@@ -27,6 +28,15 @@ async function get<T>(path: string): Promise<T> {
   return r.json();
 }
 
+/** One view's numbers, or null if the API can't be reached (callers draw without them). */
+export async function queryView(spec: PivotSpec): Promise<QueryResult | null> {
+  try {
+    return await post<QueryResult>("/query", forQuery(spec));
+  } catch {
+    return null;
+  }
+}
+
 /** null when the link has no view, or the view has nothing to show. */
 export async function loadView(v: string | null | undefined): Promise<View | null> {
   const spec = decodeSpec(v);
@@ -36,14 +46,14 @@ export async function loadView(v: string | null | undefined): Promise<View | nul
       post<QueryResult>("/query", forQuery(spec)),
       get<{ fields: FieldMeta[] }>(`/meta/fields?dataset=${encodeURIComponent(spec.dataset)}`),
     ]);
-    const labels = new Map(meta.fields.map((f) => [f.id, f.label]));
-    const model = buildChartModel(result, spec.chart);
+    const byId = new Map(meta.fields.map((f) => [f.id, f]));
+    const model = buildChartModel(result, spec.chart, (v) => betterFor(v, spec));
     return {
       spec,
       result,
       model,
       title: chartTitle(model),
-      subtitle: filterLine(spec.filters, (id) => labels.get(id) ?? id),
+      subtitle: filterLine(spec.filters, (id) => byId.get(id)?.label ?? id, (id) => byId.get(id)),
     };
   } catch {
     return null;
