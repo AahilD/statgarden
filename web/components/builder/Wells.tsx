@@ -15,12 +15,29 @@ const MODE_LABEL: Record<Mode, string> = { per_game: "per game", per_36: "per 36
 // season and season type have their own controls in the toolbar
 const TOOLBAR_FILTERS = new Set(["season", "season_type"]);
 
-export function Wells(p: { spec: PivotSpec; setSpec: SetSpec; fields: Map<string, FieldMeta>; dragging: FieldMeta | null }) {
+export function Wells(p: {
+  spec: PivotSpec;
+  setSpec: SetSpec;
+  fields: Map<string, FieldMeta>;
+  dragging: FieldMeta | null;
+  onCollapse?: () => void;
+}) {
   const label = (id: string) => p.fields.get(id)?.label ?? id;
   const filters = p.spec.filters.filter((f) => !TOOLBAR_FILTERS.has(f.field));
 
   return (
-    <div className="grid gap-2.5 rounded-card border border-line bg-surface p-3 sm:grid-cols-[96px_1fr] sm:gap-x-3">
+    <div className="relative grid gap-2.5 rounded-card border border-line bg-surface p-3 pr-11 sm:grid-cols-[96px_1fr] sm:gap-x-3">
+      {p.onCollapse && (
+        <button
+          type="button"
+          onClick={p.onCollapse}
+          aria-label="Hide the builder"
+          title="Hide the builder"
+          className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-btn text-ink-2 hover:bg-bg hover:text-ink"
+        >
+          <Chevron up />
+        </button>
+      )}
       <WellRow id="values" title="Values" hint="Numbers to show, e.g. Points" dragging={p.dragging} full={p.spec.values.length >= LIMITS.values}>
         {p.spec.values.map((v, i) => {
           const f = p.fields.get(v.field);
@@ -66,6 +83,49 @@ export function Wells(p: { spec: PivotSpec; setSpec: SetSpec; fields: Map<string
         ))}
       </WellRow>
     </div>
+  );
+}
+
+/** The builder folded into one line: what the view shows. Click to open it again. */
+export function WellsSummary(p: { spec: PivotSpec; fields: Map<string, FieldMeta>; onExpand: () => void }) {
+  const f = (id: string) => p.fields.get(id);
+  const values = p.spec.values.map((v) => {
+    const meta = f(v.field);
+    const mode = v.mode && v.mode !== "total" && (meta?.modes.length ?? 0) > 1 ? ` ${MODE_LABEL[v.mode]}` : "";
+    return (meta?.label ?? v.field) + mode;
+  });
+  const parts = [
+    values.join(", ") || "No values yet",
+    p.spec.rows.length ? `by ${p.spec.rows.map((id) => f(id)?.label ?? id).join(", ")}` : "",
+    p.spec.columns.length ? `split by ${p.spec.columns.map((id) => f(id)?.label ?? id).join(", ")}` : "",
+  ].filter(Boolean);
+  const filters = p.spec.filters.filter((x) => !TOOLBAR_FILTERS.has(x.field)).map((x) => describe(x, f(x.field)));
+
+  return (
+    <button
+      type="button"
+      onClick={p.onExpand}
+      aria-label="Show the builder"
+      className="flex w-full items-center gap-3 rounded-card border border-line bg-surface px-3 py-2.5 text-left text-sm hover:border-ink-2/40"
+    >
+      <span className="label-mono shrink-0">View</span>
+      <span className="min-w-0 flex-1 truncate">
+        <span className="text-ink">{parts.join(" ")}</span>
+        {filters.length > 0 && <span className="text-ink-2"> · {filters.join(" · ")}</span>}
+      </span>
+      <span className="flex shrink-0 items-center gap-1 text-xs text-ink-2">
+        Edit <Chevron />
+      </span>
+    </button>
+  );
+}
+
+export function Chevron({ up, left, right }: { up?: boolean; left?: boolean; right?: boolean }) {
+  const rot = up ? "rotate-180" : left ? "rotate-90" : right ? "-rotate-90" : "";
+  return (
+    <svg aria-hidden viewBox="0 0 16 16" className={`h-4 w-4 ${rot}`} fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 6l4 4 4-4" />
+    </svg>
   );
 }
 

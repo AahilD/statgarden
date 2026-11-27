@@ -29,8 +29,11 @@
 #                 box_v3    BoxScoreTraditionalV3 / AdvancedV3 (backfill, not built yet)
 
 datasets:
+  # label is what people see; period groups the dataset picker; about is its one-line description
   - id: player_game
-    label: Player games
+    label: Players
+    period: game
+    about: Box score stats, game by game. One row per player per game.
     grain: one row per player per game
     table: fact_player_game
     default:
@@ -40,37 +43,49 @@ datasets:
         - { field: season, op: in, value: ["2025-26"] }
         - { field: season_type, op: in, value: ["Regular Season"] }
   - id: team_game
-    label: Team games
+    label: Teams
+    period: game
+    about: Team and opponent stats, game by game. One row per team per game.
     grain: one row per team per game
     table: fact_team_game
     modes: [total, per_game, per_100]
   - id: shots
-    label: Shots
+    label: Shot chart
+    period: game
+    about: Every shot taken, with where it came from and if it went in.
     grain: one row per shot attempt
     table: fact_shot
     modes: [total]
+  - id: matchups
+    label: Matchups
+    period: game
+    about: Who guarded who, and how the player being guarded did.
+    grain: one row per defender, per player guarded, per game
+    table: fact_matchup
+    modes: [total]
   - id: player_season
-    label: Player seasons
+    label: Tracking & hustle
+    period: season
+    about: Speed, touches, drives, deflections, defended shots and more. Season totals per player.
     grain: one row per player per season, with NBA.com's season-only tracking, defended shots and hustle
     table: fact_player_season
     games: gp
     modes: [total, per_game, per_36]
   - id: lineups
     label: Lineups
+    period: season
+    about: How 2-man and 5-man groups did together on the floor.
     grain: one row per 2-man or 5-man lineup per team per season
     table: fact_lineup
     games: gp
     modes: [total, per_game, per_36, per_100]
   - id: play_types
     label: Play types
+    period: season
+    about: Pick and roll, isolation, post ups and more, on offense and defense.
     grain: one row per player, season, play type and side (offense or defense)
     table: fact_play_type
     modes: [total, per_100]
-  - id: matchups
-    label: Matchups
-    grain: one row per defender, per player guarded, per game
-    table: fact_matchup
-    modes: [total]
 
 groups: [Player, Team, Game, Context, Shot, Box score, Shooting, Shot zones, Advanced, Scoring, Hustle, Tracking, Defense, Opponent, Clutch, Lineup, Play type, Drives, Catch & shoot, Pull-ups, Touches, Passing, Rebounding, Defended shots, Matchup]
 
@@ -552,6 +567,15 @@ fields:
   - { id: period, label: Quarter, short: Qtr, group: Shot, kind: dimension, type: bucket, bins: [Q1, Q2, Q3, Q4, OT], expr: "CASE WHEN period <= 4 THEN 'Q' || period ELSE 'OT' END", datasets: [shots], source: shots, description: Quarter the shot was taken in. }
   - { id: clock_bucket, label: Time left in quarter, short: Clock, group: Shot, kind: dimension, type: bucket, bins: ["9-12 min", "6-9 min", "3-6 min", "1-3 min", "Last minute"], expr: "CASE WHEN clock_seconds > 540 THEN '9-12 min' WHEN clock_seconds > 360 THEN '6-9 min' WHEN clock_seconds > 180 THEN '3-6 min' WHEN clock_seconds > 60 THEN '1-3 min' ELSE 'Last minute' END", datasets: [shots], source: shots, description: Game clock when the shot went up. }
 
+  # ── How the shot happened (Shots dataset, from play-by-play) ─────────────
+  - { id: shot_move, label: Move, short: Move, group: Shot, kind: dimension, type: bucket, bins: [Pull-up, Step-back, Driving, Cutting, Running, Turnaround / fadeaway, Floater, Alley-oop, Putback / tip, No move listed], expr: shot_move, datasets: [shots], source: shots, description: "What the shooter did, from NBA.com's shot description. \"No move listed\" is a plain jumper, layup or dunk, often off a catch." }
+  - { id: assisted, label: Assisted, short: Ast'd, group: Shot, kind: dimension, type: bucket, bins: [Assisted, Unassisted, Missed], expr: assisted, datasets: [shots], source: pbp, description: Whether a made shot was assisted. Misses are their own group. }
+  - { id: assister, label: Assisted by, short: Ast by, group: Shot, kind: dimension, type: text, key: assister_id, expr: assister_name, datasets: [shots], source: pbp, description: "Who made the pass on an assisted shot. Blank for unassisted makes and misses." }
+  - { id: possession_start, label: Possession started from, short: Poss from, group: Shot, kind: dimension, type: bucket, bins: [Defensive rebound, Turnover, Other team scored, Start of quarter, Unclear], expr: "coalesce(possession_start, 'Unclear')", datasets: [shots], source: pbp, description: "What gave the team the ball: a defensive rebound, a turnover (steals included), the other team scoring, or the start of a quarter. Worked out from play-by-play." }
+  - { id: chance, label: Second chance, short: 2nd ch, group: Shot, kind: dimension, type: bucket, bins: [First chance, Second chance], expr: chance, datasets: [shots], source: pbp, description: "Second chance means the team had already grabbed an offensive rebound this possession." }
+  - { id: poss_time, label: Time into possession, short: Poss time, group: Shot, kind: dimension, type: bucket, bins: ["0-6 s", "7-12 s", "13-18 s", "19+ s", Unclear], expr: "CASE WHEN secs_into_poss IS NULL THEN 'Unclear' WHEN secs_into_poss < 7 THEN '0-6 s' WHEN secs_into_poss < 13 THEN '7-12 s' WHEN secs_into_poss < 19 THEN '13-18 s' ELSE '19+ s' END", datasets: [shots], source: pbp, description: "Game-clock seconds from getting the ball to the shot. Not the shot clock: it doesn't reset on offensive rebounds." }
+  - { id: fast_break, label: Fast break, short: FB, group: Shot, kind: dimension, type: bucket, bins: [Fast break, Not a fast break, No data yet], expr: fast_break, datasets: [shots], source: pbp_cdn, description: "NBA.com's own fast-break tag. Only in cdn.nba.com play-by-play, which is still being pulled one game at a time." }
+
   # ── Shot zones (player and team games, from the shot chart) ──────────────
   - { id: charted_fga, label: Charted shots, short: Charted, group: Shot zones, kind: measure, agg: sum, expr: charted_fga, hidden: true, format: ".0f", source: shots, description: Shots on the shot chart. }
   - { id: shot_distance_sum, label: Total shot distance, short: Dist sum, group: Shot zones, kind: measure, agg: sum, expr: shot_distance_sum, hidden: true, format: ".0f", source: shots, description: Building block for average shot distance. }
@@ -603,8 +627,8 @@ fields:
   - { id: pts_fast_break, label: Fast break points, short: FBPS, group: Scoring, kind: measure, agg: sum, expr: pts_fast_break, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: box_v3, description: Points on fast breaks. }
   - { id: pts_2nd_chance, label: Second chance points, short: 2ND PTS, group: Scoring, kind: measure, agg: sum, expr: pts_2nd_chance, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: box_v3, description: Points after an offensive rebound. }
   - { id: pts_off_tov, label: Points off turnovers, short: PTS OFF TO, group: Scoring, kind: measure, agg: sum, expr: pts_off_tov, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: box_v3, description: Points after the other team turned it over. }
-  - { id: ast_fgm, label: Assisted makes, short: AST FGM, group: Scoring, kind: measure, agg: sum, expr: ast_fgm, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", datasets: [player_game], source: box_v3, description: Made shots that were assisted. }
-  - { id: ast_fgm_pct, label: Assisted %, short: "%AST FGM", group: Scoring, kind: measure, agg: ratio, requires: [ast_fgm, fgm], formula: "ast_fgm / nullif(fgm, 0)", format: ".1%", datasets: [player_game], source: box_v3, description: Share of made shots that were assisted. }
+  - { id: ast_fgm, label: Assisted makes, short: AST FGM, group: Scoring, kind: measure, agg: sum, expr: ast_fgm, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", datasets: [player_game, shots], source: box_v3, description: Made shots that were assisted. }
+  - { id: ast_fgm_pct, label: Assisted %, short: "%AST FGM", group: Scoring, kind: measure, agg: ratio, requires: [ast_fgm, fgm], formula: "ast_fgm / nullif(fgm, 0)", format: ".1%", datasets: [player_game, shots], source: box_v3, description: Share of made shots that were assisted. }
   - { id: fouls_drawn, label: Fouls drawn, short: PFD, group: Scoring, kind: measure, agg: sum, expr: fouls_drawn, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: true, source: box_v3, description: Personal fouls drawn. }
   - { id: blk_against, label: Shots blocked, short: BLKA, group: Scoring, kind: measure, agg: sum, expr: blk_against, modes: [per_game, per_36, per_100, total], default_mode: per_game, format: ".1f", higher_is_better: false, source: box_v3, description: Times the player's (or team's) shot was blocked. }
 

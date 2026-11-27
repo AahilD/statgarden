@@ -21,7 +21,8 @@ import { CalcEditor } from "./CalcEditor";
 import { forgetCalc, rememberCalc, useSavedCalcs, type SavedCalc } from "@/lib/savedCalcs";
 import { FieldList, FieldPill } from "./FieldList";
 import { Toolbar } from "./Toolbar";
-import { ChartWells, Wells } from "./Wells";
+import { ChartWells, Chevron, Wells, WellsSummary } from "./Wells";
+import { usePanels } from "@/lib/usePanels";
 import { ChartPanel, ViewSwitch, csvAction } from "./ChartPanel";
 import { PivotTable } from "@/components/table/PivotTable";
 import { toWide } from "@/lib/pivot";
@@ -31,6 +32,8 @@ export function Builder() {
   const [spec, setSpec] = useState<PivotSpec>(() => decodeSpec(params.get("v")) ?? defaultSpec());
   const [dragging, setDragging] = useState<FieldMeta | null>(null);
   const [showFields, setShowFields] = useState(false); // phones: field list is collapsible
+  const { panels, set: setPanels } = usePanels(); // wider screens: field list and builder can fold away
+  const focused = !panels.fields && !panels.builder;
 
   const [editing, setEditing] = useState<string | "new" | null>(null); // calc being made or changed
 
@@ -89,6 +92,7 @@ export function Builder() {
 
   function onDragStart(e: DragStartEvent) {
     setDragging(fields.get(String(e.active.id)) ?? null);
+    if (!panels.builder) setPanels({ builder: true }); // somewhere to drop it
   }
   function onDragEnd(e: DragEndEvent) {
     setDragging(null);
@@ -113,10 +117,38 @@ export function Builder() {
             setEditing(null);
             setSpec((s) => switchDataset(s, id));
           }}
+          focused={focused}
+          onFocus={() => {
+            setShowFields(false);
+            setPanels(focused ? { fields: true, builder: true } : { fields: false, builder: false });
+          }}
         />
 
-        <div className="mt-5 grid gap-4 md:grid-cols-[240px_minmax(0,1fr)]">
-          <aside className="md:sticky md:top-[78px] md:self-start">
+        <div
+          className={`mt-5 grid gap-4 ${panels.fields ? "md:grid-cols-[240px_minmax(0,1fr)]" : "md:grid-cols-[40px_minmax(0,1fr)]"}`}
+        >
+          {!panels.fields && (
+            <button
+              type="button"
+              onClick={() => setPanels({ fields: true })}
+              aria-label="Show the field list"
+              title="Show the field list"
+              className="hidden h-40 flex-col items-center gap-2 rounded-card border border-line bg-surface py-3 text-ink-2 hover:text-ink md:sticky md:top-[78px] md:flex"
+            >
+              <Chevron right />
+              <span className="label-mono [writing-mode:vertical-rl]">Fields</span>
+            </button>
+          )}
+          <aside className={`relative md:sticky md:top-[78px] md:self-start ${panels.fields ? "" : "md:hidden"}`}>
+            <button
+              type="button"
+              onClick={() => setPanels({ fields: false })}
+              aria-label="Hide the field list"
+              title="Hide the field list"
+              className="absolute right-2 top-2 z-10 hidden h-7 w-7 place-items-center rounded-btn text-ink-2 hover:bg-bg hover:text-ink md:grid"
+            >
+              <Chevron left />
+            </button>
             <button
               type="button"
               onClick={() => setShowFields((v) => !v)}
@@ -168,7 +200,17 @@ export function Builder() {
           </aside>
 
           <section className="min-w-0 space-y-4">
-            <Wells spec={spec} setSpec={setSpec} fields={fields} dragging={dragging} />
+            {panels.builder ? (
+              <Wells
+                spec={spec}
+                setSpec={setSpec}
+                fields={fields}
+                dragging={dragging}
+                onCollapse={() => setPanels({ builder: false })}
+              />
+            ) : (
+              <WellsSummary spec={spec} fields={fields} onExpand={() => setPanels({ builder: true })} />
+            )}
             <ViewSwitch
               view={spec.chart.view}
               setSpec={setSpec}

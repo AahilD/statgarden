@@ -71,6 +71,8 @@ class FieldDef(BaseModel):
 class Dataset(BaseModel):
     id: str
     label: str
+    period: Literal["game", "season"]  # groups the picker: game by game, or season totals
+    about: str  # one line for people, shown in the picker
     grain: str
     table: str
     modes: list[Mode] = Field(default_factory=lambda: ["total", "per_game", "per_36", "per_100"])

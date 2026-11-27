@@ -88,7 +88,7 @@ def test_values_are_bound_not_pasted():
     [
         ({"rows": ["not_a_field"], "values": [{"field": "pts"}]}, "unknown field"),
         ({"rows": ["pts"], "values": [{"field": "pts"}]}, "is a measure"),
-        ({"values": [{"field": "opp_pts"}]}, "isn't in Player games"),
+        ({"values": [{"field": "opp_pts"}]}, "isn't in Players"),
         ({"values": [{"field": "fg_pct", "mode": "per_game"}]}, "can't be shown"),
         ({"rows": [], "values": []}, "at least one value"),
     ],
@@ -156,6 +156,29 @@ def test_shots_add_up_to_the_game_log():
     # NBA.com's shot chart and game log differ by a shot or two a season
     assert shots["fga:total"] == pytest.approx(games["fga:total"], abs=5)
     assert shots["fgm:total"] == pytest.approx(games["fgm:total"], abs=5)
+
+
+def test_assisted_makes_match_assists():
+    # every assist is an assisted make, so the shot chart's assisted makes ≈ the box score's assists
+    shots = q(dataset="shots", filters=REG_2526, values=[{"field": "ast_fgm"}])["rows"][0]
+    games = q(filters=REG_2526, values=[{"field": "ast", "mode": "total"}])["rows"][0]
+    assert shots["ast_fgm:total"] == pytest.approx(games["ast:total"], rel=0.005)
+
+
+def test_assisted_by_matches_each_passers_assists():
+    by = q(dataset="shots", filters=REG_2526, rows=["assister"], values=[{"field": "ast_fgm"}], limit=5)
+    box = q(filters=REG_2526, rows=["player"], values=[{"field": "ast", "mode": "total"}], limit=50)
+    ast = {r["d_player__key"]: r["ast:total"] for r in box["rows"]}
+    assert len(by["rows"]) == 5
+    for r in by["rows"]:
+        assert r["ast_fgm:total"] == pytest.approx(ast[r["d_assister__key"]], abs=3), r["d_assister"]
+
+
+def test_how_the_shot_happened_splits_every_shot():
+    total = q(dataset="shots", filters=REG_2526, values=[{"field": "fga"}])["rows"][0]["fga:total"]
+    for dim in ["shot_move", "assisted", "possession_start", "chance", "fast_break"]:
+        rows = q(dataset="shots", filters=REG_2526, rows=[dim], values=[{"field": "fga"}])["rows"]
+        assert sum(r["fga:total"] for r in rows) == total, dim
 
 
 def test_per_100_possessions():
@@ -253,7 +276,7 @@ def test_group_filter_on_a_calc():
         ("pts / nope", "no field called"),
         ("player / min", "grouping field"),
         ("(pts / min", "isn't closed"),
-        ("opp_pts / min", "isn't in Player games"),
+        ("opp_pts / min", "isn't in Players"),
         ("", "Type a formula"),
     ],
 )

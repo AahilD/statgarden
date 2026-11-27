@@ -14,6 +14,9 @@ export function Toolbar(p: {
   seasons: SeasonMeta[];
   datasets: DatasetMeta[];
   onDataset: (id: string) => void;
+  /** field list and builder both folded away */
+  focused: boolean;
+  onFocus: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const seasons = [...new Set(p.seasons.map((s) => s.season))].sort().reverse();
@@ -35,26 +38,7 @@ export function Toolbar(p: {
     <div className="flex flex-wrap items-center gap-x-7 gap-y-3">
       <h1 className="title-caps text-2xl leading-none">Lab</h1>
 
-      {p.datasets.length > 1 && (
-        <div role="radiogroup" aria-label="Data" className="inline-flex flex-wrap gap-0.5 rounded-btn border border-line bg-surface p-1">
-          {p.datasets.map((d) => {
-            const on = p.spec.dataset === d.id;
-            return (
-              <button
-                key={d.id}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                title={d.grain}
-                onClick={() => p.onDataset(d.id)}
-                className={`rounded-chip px-3 py-1 text-sm font-medium ${on ? "bg-ink text-bg" : "text-ink-2 hover:text-ink"}`}
-              >
-                {d.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {p.datasets.length > 1 && <DatasetPicker datasets={p.datasets} value={p.spec.dataset} onPick={p.onDataset} />}
 
       <div className="flex items-center gap-2">
         <span className="label-mono">Season</span>
@@ -91,6 +75,15 @@ export function Toolbar(p: {
             ))}
           </select>
         </label>
+        <button
+          type="button"
+          onClick={p.onFocus}
+          aria-pressed={p.focused}
+          title={p.focused ? "Bring back the field list and builder" : "Hide the field list and builder so the table gets the space"}
+          className="hidden rounded-btn border border-line bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:bg-bg md:inline-block"
+        >
+          {p.focused ? "Show builder" : "Focus table"}
+        </button>
         <button
           type="button"
           onClick={share}
@@ -168,6 +161,86 @@ function SeasonPicker(p: { seasons: string[]; picked: string[]; onToggle: (s: st
           ))}
           {p.seasons.length === 0 && <li className="px-2 py-1.5 text-sm text-ink-2">Loading…</li>}
         </ul>
+      )}
+    </div>
+  );
+}
+
+const PERIODS = [
+  { id: "game", label: "Game by game" },
+  { id: "season", label: "Season totals" },
+] as const;
+
+/** Which data the table is built from, as a dropdown grouped by game-by-game and season totals. */
+function DatasetPicker(p: { datasets: DatasetMeta[]; value: string; onPick: (id: string) => void }) {
+  const { open, setOpen, ref } = usePopover(false);
+  const current = p.datasets.find((d) => d.id === p.value);
+  // on phones the button sits mid-row, so the menu is pinned to the screen edges just under it
+  const [phoneTop, setPhoneTop] = useState<number | null>(null);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`Data: ${current?.label ?? "pick one"}`}
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setPhoneTop(window.innerWidth < 640 ? r.bottom : null);
+          setOpen((o) => !o);
+        }}
+        className="flex items-center gap-2.5 rounded-btn border border-line bg-surface px-3 py-1.5 text-sm hover:border-line-strong"
+      >
+        <span className="label-mono">Data</span>
+        <span className="font-medium text-ink">{current?.label ?? "Pick one"}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className={`text-ink-2 ${open ? "rotate-180" : ""}`}>
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          aria-label="Data"
+          style={phoneTop === null ? undefined : { position: "fixed", top: phoneTop, left: 16, right: 16, width: "auto" }}
+          className="absolute left-0 top-full z-30 mt-1.5 w-80 rounded-card border border-line bg-surface-2 p-1.5 shadow-xl"
+        >
+          {PERIODS.map((period) => {
+            const list = p.datasets.filter((d) => d.period === period.id);
+            if (!list.length) return null;
+            return (
+              <div key={period.id} role="group" aria-label={period.label} className="mb-1 last:mb-0">
+                <div className="label-mono px-2 pb-1 pt-1.5">{period.label}</div>
+                {list.map((d) => {
+                  const on = d.id === p.value;
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      role="option"
+                      aria-selected={on}
+                      onClick={() => {
+                        setOpen(false);
+                        if (!on) p.onPick(d.id);
+                      }}
+                      className={`block w-full rounded-chip px-2 py-1.5 text-left hover:bg-bg ${on ? "bg-bg" : ""}`}
+                    >
+                      <span className={`flex items-center gap-2 text-sm font-medium ${on ? "text-accent-ink" : "text-ink"}`}>
+                        {d.label}
+                        {on && (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <path d="M20 6 9 17l-5-5" />
+                          </svg>
+                        )}
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-snug text-ink-2">{d.about}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

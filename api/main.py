@@ -160,6 +160,8 @@ def search(q: str = Q(..., min_length=2), limit: int = Q(8, le=25)):
 
 @app.post("/query")
 def query(spec: PivotSpec):
+    # open the newest file first: it may swap files, which re-checks which fields work and clears the cache
+    cur = db.cursor()
     try:
         q = build(spec, catalog)
     except SpecError as err:
@@ -173,7 +175,6 @@ def query(spec: PivotSpec):
             default=str,
         ).encode()
     ).hexdigest()
-    cur = db.cursor()  # may swap files and clear the cache, so call before reading it
     with _cache_lock:
         if key in _cache:
             _cache.move_to_end(key)

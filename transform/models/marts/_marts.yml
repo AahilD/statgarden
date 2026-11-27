@@ -41,6 +41,14 @@ models:
         data_tests: [unique, not_null]
       - name: shot_zone
         data_tests: [not_null]
+      - name: shot_move
+        data_tests: [not_null]
+      - name: assisted
+        data_tests:
+          - accepted_values: { arguments: { values: [Assisted, Unassisted, Missed] } }
+      - name: possession_start
+        data_tests:
+          - accepted_values: { arguments: { values: [Defensive rebound, Turnover, Other team scored, Start of quarter] } }
   - name: fact_player_season
     description: One row per player per season type, with season-only tracking, defended shots and hustle.
     columns:

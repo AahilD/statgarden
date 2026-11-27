@@ -21,7 +21,14 @@ export type FieldMeta = {
   available: boolean;
 };
 
-export type DatasetMeta = { id: string; label: string; grain: string; default: Record<string, unknown> };
+export type DatasetMeta = {
+  id: string;
+  label: string;
+  period: "game" | "season";
+  about: string;
+  grain: string;
+  default: Record<string, unknown>;
+};
 export type FormulaCheck = { ok: boolean; error: string | null; fields: { id: string; label: string }[] };
 
 export type SeasonMeta = { season: string; season_type: string; games: number; last_game: string };
