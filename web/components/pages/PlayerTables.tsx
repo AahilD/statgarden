@@ -67,12 +67,11 @@ const SEASON_COLUMNS: Column<Row>[] = [
 ];
 
 /** Season by season for one season type at a time, with that type's career line underneath. */
-export function PlayerSeasons(p: { name: string; seasons: SeasonRow[]; career: CareerRow[]; firstSeason: string }) {
+export function PlayerSeasons(p: { name: string; seasons: SeasonRow[]; career: CareerRow[] }) {
   const types = typesIn(p.seasons);
   const [type, setType] = useState<SeasonType>(types[0]?.id ?? "Regular Season");
   const rows = p.seasons.filter((s) => s.season_type === type);
   const career = p.career.filter((c) => c.season_type === type).map((c) => ({ ...c, season: "Career", teams: "" }));
-  const cupNote = type === "NBA Cup" ? " NBA Cup group and knockout games (they count in the regular season too; the final doesn't)." : "";
   return (
     <StatTable
       caption={`${p.name} season by season, ${TYPE_LABEL[type].toLowerCase()}, per game`}
@@ -81,7 +80,6 @@ export function PlayerSeasons(p: { name: string; seasons: SeasonRow[]; career: C
       rowKey={(r) => r.season}
       foot={career}
       toolbar={types.length > 1 ? <Pills label="Season type" options={types} value={type} onPick={setType} /> : undefined}
-      note={`Per game.${cupNote} Career adds up every season loaded so far (${p.firstSeason} on).`}
     />
   );
 }
@@ -144,6 +142,39 @@ const GAME_COLUMNS: Column<GameLine>[] = [
   { key: "pm", label: "+/−", title: "Plus-minus", cell: (g) => signed(g.plus_minus, 0), sort: (g) => g.plus_minus },
 ];
 
+const COUNTS = [
+  { id: "5", label: "Last 5" },
+  { id: "10", label: "Last 10" },
+  { id: "15", label: "Last 15" },
+  { id: "all", label: "All" },
+];
+const PARTS = [
+  { id: "regular", label: "Regular season" },
+  { id: "playoffs", label: "Playoffs" },
+] as const;
+type Part = (typeof PARTS)[number]["id"];
+
+/** This season's game log: regular season (Cup games included) or playoffs (play-in included),
+ * the last 5, 10 or 15 games or all of them. Playoffs stays empty until they start. */
 export function PlayerGames(p: { name: string; games: GameLine[] }) {
-  return <StatTable caption={`${p.name}'s last games`} columns={GAME_COLUMNS} rows={p.games} rowKey={(g) => g.game_id} />;
+  const [part, setPart] = useState<Part>("regular");
+  const [count, setCount] = useState("15");
+  const inPart = p.games.filter((g) => (g.season_type === "Playoffs" || g.season_type === "Play-In") === (part === "playoffs"));
+  const rows = count === "all" ? inPart : inPart.slice(0, Number(count));
+  const season = p.games[0]?.season;
+  return (
+    <StatTable
+      caption={`${p.name}'s ${season ?? ""} ${part === "playoffs" ? "playoff" : "regular season"} games`}
+      columns={GAME_COLUMNS}
+      rows={rows}
+      rowKey={(g) => g.game_id}
+      toolbar={
+        <div className="flex flex-wrap items-center gap-2">
+          <Pills label="Season part" options={[...PARTS]} value={part} onPick={setPart} />
+          <Pills label="How many games" options={COUNTS} value={count} onPick={setCount} />
+        </div>
+      }
+      empty={part === "playoffs" ? `No playoff games${season ? ` in ${season}` : ""} yet.` : "No games yet."}
+    />
+  );
 }

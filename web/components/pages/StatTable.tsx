@@ -30,14 +30,18 @@ export function StatTable<R>(p: {
   rowClass?: (r: R) => string;
   foot?: R[];
   caption?: string;
-  /** shows the "Highlight leaders" switch above the table */
-  leaders?: boolean;
+  /** shows the "Highlight leaders" switch above the table (a string: who can lead, as its tooltip) */
+  leaders?: boolean | string;
   /** controls on the left above the table (e.g. Regular season / Playoffs) */
   toolbar?: ReactNode;
   /** a line under the table */
   note?: ReactNode;
   /** rows that start a new group (the bench); the line only shows in the table's own order */
   divider?: (r: R) => boolean;
+  /** number columns centred under their headers instead of right-aligned (standings) */
+  center?: boolean;
+  /** a line in the table when there are no rows */
+  empty?: string;
 }) {
   const [sort, setSort] = useState<SortState>(null);
   const [lit, setLit] = useState(false);
@@ -80,7 +84,7 @@ export function StatTable<R>(p: {
   const cellCls = (c: Column<R>, head = false, shaded = head) =>
     [
       "whitespace-nowrap px-3 py-2",
-      c.text ? "text-left" : "text-right font-mono tabular-nums",
+      c.text ? "text-left" : `${p.center ? "text-center" : "text-right"} font-mono tabular-nums`,
       c.sticky ? `sticky left-0 z-[1] ${shaded ? "bg-table-head" : "bg-surface"}` : "",
       c.strong && !head ? "font-medium text-ink" : "",
     ].join(" ");
@@ -91,7 +95,10 @@ export function StatTable<R>(p: {
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div>{p.toolbar}</div>
           {p.leaders && (
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-2 hover:text-ink">
+            <label
+              title={typeof p.leaders === "string" ? p.leaders : undefined}
+              className="flex cursor-pointer items-center gap-2 text-xs text-ink-2 hover:text-ink"
+            >
               <input type="checkbox" checked={lit} onChange={(e) => setLit(e.target.checked)} className="accent-[var(--orange)]" />
               Highlight leaders
             </label>
@@ -118,12 +125,15 @@ export function StatTable<R>(p: {
                         type="button"
                         onClick={() => setSort((s) => nextSort(s, c.key))}
                         aria-label={`Sort by ${c.title ?? c.label}`}
-                        className={`inline-flex items-center gap-1 uppercase hover:text-ink ${on ? "text-accent-ink" : ""}`}
+                        className={`relative uppercase hover:text-ink ${on ? "text-accent-ink" : ""}`}
                       >
                         {c.label}
-                        <span aria-hidden className="w-2 text-[9px]">
-                          {on ? (sort!.dir === "asc" ? "▲" : "▼") : ""}
-                        </span>
+                        {/* the arrow hangs off the side, so the label stays lined up with the numbers */}
+                        {on && (
+                          <span aria-hidden className="absolute left-full top-1/2 ml-0.5 -translate-y-1/2 text-[9px]">
+                            {sort!.dir === "asc" ? "▲" : "▼"}
+                          </span>
+                        )}
                       </button>
                     ) : (
                       c.label
@@ -134,6 +144,13 @@ export function StatTable<R>(p: {
             </tr>
           </thead>
           <tbody>
+            {rows.length === 0 && p.empty && (
+              <tr>
+                <td colSpan={p.columns.length} className="px-3 py-8 text-center text-sm text-ink-2">
+                  {p.empty}
+                </td>
+              </tr>
+            )}
             {rows.map((r) => (
               <tr
                 key={p.rowKey(r)}

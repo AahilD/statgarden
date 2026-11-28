@@ -21,7 +21,7 @@ def test_player_page():
     # career rows are the sum of the season rows
     career = next(c for c in d["career"] if c["season_type"] == "Regular Season")
     assert career["pts"] == sum(x["pts"] for x in d["seasons"] if x["season_type"] == "Regular Season")
-    assert len(d["games"]) == 15
+    assert len({g["season"] for g in d["games"]}) == 1  # the game log: every game of their latest season
     assert d["games"][0]["game_date"] >= d["games"][-1]["game_date"]  # newest first
     assert d["highs"]["pts"]["value"] >= max(g["pts"] for g in d["games"])
     assert {"pts", "reb", "ast", "stl", "blk", "fg3m"} <= set(d["highs"])

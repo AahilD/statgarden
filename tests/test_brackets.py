@@ -20,6 +20,22 @@ def test_cup_groups_and_knockouts():
     statuses = [t["status"] for g in d["groups"] for t in g["teams"] if t["status"]]
     assert statuses.count("winner") == 6 and statuses.count("wildcard") == 2
     assert [k["round"] for k in d["knockout"]] == ["Quarterfinal"] * 4 + ["Semifinal"] * 2 + ["Championship"]
+    # each quarterfinalist once, the 1v4 game above the 2v3 game in each conference
+    qf = d["knockout"][:4]
+    assert len({t["id"] for k in qf for t in (k["top"], k["bottom"])}) == 8
+    assert [(k["conference"], k["top"]["seed"], k["bottom"]["seed"]) for k in qf] == [
+        ("East", 1, 4),
+        ("East", 2, 3),
+        ("West", 1, 4),
+        ("West", 2, 3),
+    ]
+
+
+def test_cup_bracket_fills_in_before_the_knockouts():
+    d = client.get("/cup").json()
+    for k in d["knockout"][:4]:
+        if not k["game_id"]:
+            assert k["top"]["abbr"] and k["bottom"]["abbr"]  # who'd be there from the group tables
 
 
 def test_finished_playoffs_bracket():

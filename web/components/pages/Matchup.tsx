@@ -48,7 +48,7 @@ export function MatchCard(p: { rows: [ReactNode, ReactNode]; foot?: ReactNode; h
       {p.rows[0]}
       <div className="h-px bg-line" />
       {p.rows[1]}
-      {p.foot && <div className="truncate border-t border-line bg-table-head px-2.5 py-1 font-mono text-[10px] text-ink-2">{p.foot}</div>}
+      {p.foot && <div className="border-t border-line bg-table-head px-2.5 py-1 font-mono text-[10px] text-ink-2">{p.foot}</div>}
     </div>
   );
   return p.href ? (

@@ -3,9 +3,9 @@ import { cacheLife } from "next/cache";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { Dot, Heading, LabLinks, Tile, TitleCard } from "@/components/pages/Parts";
+import { Dot, Heading, Tile, TitleCard } from "@/components/pages/Parts";
+import { TEAM_COLORS } from "@/lib/teamColors";
 import { RecentGames, Roster, TeamSeasons } from "@/components/pages/TeamTables";
-import { teamLinks } from "@/lib/labLinks";
 import { apiGet, num1, ordinal, signed, type TeamPage } from "@/lib/pages";
 
 async function load(abbr: string) {
@@ -41,6 +41,7 @@ async function Team({ params }: { params: PageProps<"/teams/[abbr]">["params"] }
   return (
     <div className="mx-auto max-w-[1100px] px-4 pt-8 sm:pt-12">
       <TitleCard
+        colors={TEAM_COLORS[t.abbr]}
         title={t.name}
         eyebrow={
           <>
@@ -79,10 +80,10 @@ async function Team({ params }: { params: PageProps<"/teams/[abbr]">["params"] }
         <section className="mt-6">
           <div className="label-mono mb-2 text-center">{t.season} regular season · per 100 possessions</div>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Tile tone="orange" label="Offence" value={num1(now.off_rtg)} note="Scored per 100" />
-            <Tile tone="blue" label="Defence" value={num1(now.def_rtg)} note="Allowed per 100" />
+            <Tile tone="orange" label="Offence" value={num1(now.off_rtg)} />
+            <Tile tone="blue" label="Defence" value={num1(now.def_rtg)} />
             <Tile tone="green" label="Net rating" value={signed(now.net_rtg)} note={`${num1(now.pts)} − ${num1(now.opp_pts)}`} />
-            <Tile tone="red" label="Pace" value={num1(now.pace)} note="Per 48 minutes" />
+            <Tile tone="red" label="Pace" value={num1(now.pace)} />
           </div>
         </section>
       )}
@@ -100,11 +101,6 @@ async function Team({ params }: { params: PageProps<"/teams/[abbr]">["params"] }
       <section className="mt-12">
         <Heading>Season by season</Heading>
         <TeamSeasons team={t.name} seasons={d.seasons} />
-      </section>
-
-      <section className="mt-12">
-        <Heading>Dig deeper in the Lab</Heading>
-        <LabLinks links={teamLinks(t.abbr, t.season)} />
       </section>
     </div>
   );

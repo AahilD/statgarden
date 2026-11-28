@@ -3,10 +3,10 @@
 // The NBA Cup on the teams page: the six groups (East and West, three each) with their games,
 // then the knockout bracket. Group winners and one wild card per conference go through.
 import Link from "next/link";
+import { BracketLines, BracketPanel, Slot } from "@/components/pages/Bracket";
 import { gameWinner, MatchCard, MatchRow } from "@/components/pages/Matchup";
-import { Heading, LabLinks } from "@/components/pages/Parts";
-import { FINAL, type BGame, type BTeam, type CupData, type CupGroup, type CupTeam } from "@/lib/brackets";
-import { cupLinks } from "@/lib/labLinks";
+import { Heading } from "@/components/pages/Parts";
+import { FINAL, type BGame, type BTeam, type CupData, type CupGroup, type CupSlot, type CupTeam } from "@/lib/brackets";
 import { shortDate, signed } from "@/lib/pages";
 
 const MARK: Record<NonNullable<CupTeam["status"]>, { label: string; cls: string; title: string }> = {
@@ -34,22 +34,13 @@ export function CupView({ data }: { data: CupData }) {
           ))}
         </div>
         <p className="mt-4 text-center font-mono text-[11px] text-ink-2">
-          Each team plays the other four in its group once. The three group winners and one wild card (the best second-place team) in each
-          conference go to the quarterfinals. Ties: head-to-head, then point differential, then points scored.
+          Ties: head-to-head, then point differential, then points scored.
         </p>
       </section>
 
       <section>
         <Heading>Knockout rounds</Heading>
-        <CupBracket games={data.knockout} />
-        <p className="mt-3 text-center font-mono text-[11px] text-ink-2">
-          Knockout games count in the regular season standings and stats, except the final.
-        </p>
-      </section>
-
-      <section>
-        <Heading>Dig deeper in the Lab</Heading>
-        <LabLinks links={cupLinks(data.season)} />
+        <CupBracket slots={data.knockout} />
       </section>
     </div>
   );
@@ -61,18 +52,24 @@ function GroupCard({ group }: { group: CupGroup }) {
     <div className="overflow-hidden rounded-card border border-line bg-surface">
       <div className="flex items-baseline justify-between border-b border-line-strong bg-table-head px-3 py-2">
         <span className="title-caps text-sm">{group.name}</span>
-        <span className="font-mono text-[11px] text-ink-2">
-          {group.done ? "Final" : `${played} of ${group.games.length} played`}
-        </span>
+        <span className="font-mono text-[11px] text-ink-2">{group.done ? "Final" : `${played} of ${group.games.length} played`}</span>
       </div>
       <table className="w-full border-collapse text-[13px]">
         <caption className="sr-only">{group.name} standings</caption>
         <thead>
           <tr className="border-b border-line bg-table-head font-mono text-[11px] uppercase tracking-wide text-ink-2">
-            <th scope="col" className="px-3 py-1.5 text-left font-normal">Team</th>
-            <th scope="col" className="px-2 py-1.5 text-right font-normal" title="Wins">W</th>
-            <th scope="col" className="px-2 py-1.5 text-right font-normal" title="Losses">L</th>
-            <th scope="col" className="px-3 py-1.5 text-right font-normal" title="Point differential">+/−</th>
+            <th scope="col" className="px-3 py-1.5 text-left font-normal">
+              Team
+            </th>
+            <th scope="col" className="px-2 py-1.5 text-right font-normal" title="Wins">
+              W
+            </th>
+            <th scope="col" className="px-2 py-1.5 text-right font-normal" title="Losses">
+              L
+            </th>
+            <th scope="col" className="px-3 py-1.5 text-right font-normal" title="Point differential">
+              +/−
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -86,7 +83,10 @@ function GroupCard({ group }: { group: CupGroup }) {
                     <span className="hidden sm:inline">{t.name ?? t.abbr}</span>
                   </Link>
                   {t.status && (
-                    <span title={MARK[t.status].title} className={`rounded-full px-2 font-mono text-[10px] uppercase leading-[18px] ${MARK[t.status].cls}`}>
+                    <span
+                      title={MARK[t.status].title}
+                      className={`rounded-full px-2 font-mono text-[10px] uppercase leading-[18px] ${MARK[t.status].cls}`}
+                    >
                       {MARK[t.status].label}
                     </span>
                   )}
@@ -144,44 +144,76 @@ function GameLine({ g }: { g: BGame }) {
   );
 }
 
-const ROUNDS = ["Quarterfinal", "Semifinal", "Championship"];
-const ROUND_LABEL: Record<string, string> = { Quarterfinal: "Quarterfinals", Semifinal: "Semifinals", Championship: "Final" };
+/** "Dec 4", or "Dec 4–5" / "Nov 30–Dec 1" for a round spread over two days. */
+const dateSpan = (from: string, to: string | null) => {
+  if (!to) return shortDate(from);
+  const [a, b] = [shortDate(from), shortDate(to)];
+  return a.split(" ")[0] === b.split(" ")[0] ? `${a}–${b.split(" ")[1]}` : `${a}–${b}`;
+};
 
-function CupBracket({ games }: { games: CupData["knockout"] }) {
+const ROUNDS = ["Quarterfinal", "Semifinal", "Championship"];
+const ROUND_LABEL: Record<string, string> = {
+  Quarterfinal: "Quarterfinals",
+  Semifinal: "Semifinals",
+  Championship: "Final",
+};
+
+function CupBracket({ slots }: { slots: CupSlot[] }) {
+  const next: Record<string, string | undefined> = {
+    Quarterfinal: "Semifinal",
+    Semifinal: "Championship",
+  };
   return (
-    <div className="overflow-x-auto pb-1">
-      <div className="grid min-w-[560px] grid-cols-3 gap-4">
-        {ROUNDS.map((r) => (
-          <div key={r} className="flex flex-col">
-            <div className="label-mono mb-2 text-center">{ROUND_LABEL[r]}</div>
-            <div className="flex flex-1 flex-col justify-around gap-3">
-              {games
-                .filter((g) => g.round === r)
-                .map((g, i) => (
-                  // the final isn't in the box score data (it doesn't count), so no link for it
-                  <KnockoutGame key={g.game_id ?? i} g={g} link={r !== "Championship"} final={r === "Championship"} />
-                ))}
+    <BracketPanel className="overflow-x-auto">
+      <BracketLines className="min-w-[560px]">
+        <div className="grid grid-cols-3 gap-6">
+          {ROUNDS.map((r) => (
+            <div key={r} className="flex flex-col">
+              <div className="label-mono mb-2 text-center">{ROUND_LABEL[r]}</div>
+              <div className="flex flex-1 flex-col justify-around gap-3">
+                {slots
+                  .filter((s) => s.round === r)
+                  .map((s, i) => (
+                    <Slot key={i} id={`${r}-${i}`} to={next[r] && `${next[r]}-${Math.floor(i / 2)}`} won={s.status === FINAL}>
+                      <KnockoutGame s={s} />
+                    </Slot>
+                  ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-    </div>
+          ))}
+        </div>
+      </BracketLines>
+    </BracketPanel>
   );
 }
 
-/** One knockout game: both teams, scores once it's final, the winner on green. */
-function KnockoutGame({ g, link, final: isFinal }: { g: BGame; link: boolean; final?: boolean }) {
-  const winner = gameWinner(g);
-  const row = (side: "home" | "away") => (
-    <MatchRow abbr={g[side].abbr} value={g[side].score} won={winner === side} lost={!!winner && winner !== side} />
+/** One knockout slot: seeds, scores once it's final, the winner on green. Before the teams are
+ * set it shows who'd be there from the group tables (or the winners of the round before). */
+function KnockoutGame({ s }: { s: CupSlot }) {
+  const final = s.status === FINAL;
+  const topWon = final && (s.top.score ?? 0) > (s.bottom.score ?? 0);
+  const champ = s.round === "Championship";
+  // the final isn't in the box score data (it doesn't count), so no link for it
+  const href = final && !champ && s.game_id ? `/games/${s.game_id}` : null;
+  // team links only when the card itself isn't a link
+  const row = (t: BTeam, won: boolean) => (
+    <MatchRow
+      abbr={t.abbr}
+      seed={t.seed}
+      link={!href}
+      title={t.name ?? undefined}
+      value={t.score}
+      won={final && won}
+      lost={final && !won}
+    />
   );
   return (
     <MatchCard
-      rows={[row("away"), row("home")]}
-      foot={`${g.date ? shortDate(g.date) : "Date TBD"}${isFinal ? " · Final" : ""}`}
-      href={link && winner && g.game_id ? `/games/${g.game_id}` : null}
-      label={`${g.away.abbr} at ${g.home.abbr}: box score`}
-      accent={isFinal}
+      rows={[row(s.top, topWon), row(s.bottom, !topWon)]}
+      foot={s.date ? dateSpan(s.date, s.date_to) : null}
+      href={href}
+      label={`${s.top.abbr} v ${s.bottom.abbr}: box score`}
+      accent={champ}
     />
   );
 }

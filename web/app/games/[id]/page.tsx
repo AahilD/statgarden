@@ -79,7 +79,7 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
             {place && <span>{place}</span>}
             {time && <><Dot /><span>{time}</span></>}
             {g.attendance ? <><Dot /><span>{g.attendance.toLocaleString("en-US")}{g.sellout ? " (sold out)" : ""}</span></> : null}
-            {g.duration && <><Dot /><span>{g.duration} long</span></>}
+            {g.duration && <><Dot /><span>Game length {gameLength(g.duration)}</span></>}
           </>
         }
       >
@@ -100,6 +100,9 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
       <section className="mt-12">
         <Heading>Team stats</Heading>
         <Compare away={away} home={home} />
+        {g.officials.length > 0 && (
+          <p className="mt-3 text-center font-mono text-[11px] text-ink-2">Officials: {g.officials.join(", ")}</p>
+        )}
       </section>
 
       {[away, home].map((t) => (
@@ -108,13 +111,15 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
           <BoxScore team={t} />
         </section>
       ))}
-
-      {g.officials.length > 0 && (
-        <p className="mt-10 text-center font-mono text-[11px] text-ink-2">Officials: {g.officials.join(", ")}</p>
-      )}
     </div>
   );
 }
+
+/** "2:14" → "2h 14m". */
+const gameLength = (d: string) => {
+  const m = d.match(/^(\d+):(\d{2})/);
+  return m ? `${Number(m[1])}h ${Number(m[2])}m` : d;
+};
 
 /** One team in the scoreboard: name over the score; the loser's score is dimmed. */
 function Side({ t }: { t: GameTeam }) {

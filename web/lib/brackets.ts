@@ -18,7 +18,19 @@ export type CupTeam = {
   status: "winner" | "leader" | "wildcard" | "wildcard_lead" | null;
 };
 export type CupGroup = { name: string; conference: "East" | "West"; done: boolean; teams: CupTeam[]; games: BGame[] };
-export type CupData = { season: string | null; seasons: string[]; groups: CupGroup[]; knockout: (BGame & { round: string })[] };
+/** A knockout slot: the real game once both teams are known, else who'd be there (abbr null = TBD). */
+export type CupSlot = {
+  round: "Quarterfinal" | "Semifinal" | "Championship";
+  conference: "East" | "West" | null;
+  game_id: string | null;
+  date: string | null;
+  /** last day, when the round is spread over more than one and the slot's game isn't known yet */
+  date_to: string | null;
+  status: number;
+  top: BTeam;
+  bottom: BTeam;
+};
+export type CupData = { season: string | null; seasons: string[]; groups: CupGroup[]; knockout: CupSlot[] };
 
 export type SeriesTeam = { id: number; abbr: string; name: string | null; seed: number | null; wins: number; playin?: boolean };
 export type Series = { top: SeriesTeam; bottom: SeriesTeam; winner: string | null; games: number };

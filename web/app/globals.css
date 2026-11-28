@@ -33,6 +33,7 @@
   --red-soft: rgba(218, 61, 32, 0.2);
   /* table header and total rows: a touch of Warm Sand over Charcoal */
   --table-head: color-mix(in srgb, #d8c7b5 13%, #141416);
+  --panel: color-mix(in srgb, #d8c7b5 5%, #0b0b0c); /* behind the brackets: a touch of Warm Sand over Obsidian */
 
   /* only used in the shared six-colour stripe (same as the personal website) */
   --stripe-red: #da3d20;
@@ -60,12 +61,14 @@
   --green-soft: rgba(46, 90, 68, 0.14);
   --red-soft: rgba(218, 61, 32, 0.12);
   --table-head: color-mix(in srgb, #d8c7b5 38%, #ffffff); /* Warm Sand over white */
+  --panel: color-mix(in srgb, #d8c7b5 28%, #fcfcfc); /* behind the brackets: Warm Sand over Porcelain */
 }
 
 @theme inline {
   --color-bg: var(--bg);
   --color-sunken: var(--sunken);
   --color-table-head: var(--table-head);
+  --color-panel: var(--panel);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
   --color-line: var(--border);

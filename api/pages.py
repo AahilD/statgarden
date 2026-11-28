@@ -97,8 +97,10 @@ def player(player_id: int):
             SELECT game_id, game_date, season, season_type, cup_stage, team_abbreviation AS team,
                    opp_abbreviation AS opp, is_home, is_win, margin, min, pts, reb, ast, stl, blk, tov,
                    fgm, fga, fg3m, fg3a, ftm, fta, plus_minus
-            FROM fact_player_game WHERE player_id = ? ORDER BY game_date DESC LIMIT 15""",
-            [player_id],
+            FROM fact_player_game
+            WHERE player_id = ? AND season = (SELECT max(season) FROM fact_player_game WHERE player_id = ?)
+            ORDER BY game_date DESC""",
+            [player_id, player_id],
         )
     )
     # best games for the headline numbers, with where and when

@@ -4,10 +4,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ShotMap } from "@/components/chart/ShotMap";
-import { Dot, Heading, LabLinks, Tile, TileRow, TitleCard } from "@/components/pages/Parts";
+import { Dot, Heading, Tile, TileRow, TitleCard } from "@/components/pages/Parts";
 import { PlayerGames, PlayerSeasons } from "@/components/pages/PlayerTables";
+import { SectionNav } from "@/components/pages/SectionNav";
 import type { CourtResult } from "@/lib/court";
-import { playerLinks } from "@/lib/labLinks";
 import { apiGet, height, ordinal, perGame, shortDate, type PlayerPage } from "@/lib/pages";
 
 /** One player's page data, kept for an hour (the nightly run is the only thing that changes it). */
@@ -31,7 +31,7 @@ export async function generateMetadata({ params }: PageProps<"/players/[id]">): 
   const p = d.player;
   return {
     title: p.player_name,
-    description: `${p.player_name}: season by season, recent games and career highs.`,
+    description: `${p.player_name}: season by season, shot map, career highs and game log.`,
   };
 }
 
@@ -103,20 +103,29 @@ async function Player({ params }: { params: PageProps<"/players/[id]">["params"]
         </section>
       )}
 
-      <section className="mt-12">
-        <Heading>Season by season</Heading>
-        <PlayerSeasons name={p.player_name} seasons={d.seasons} career={d.career} firstSeason={p.first_season} />
+      <SectionNav
+        links={[
+          { id: "seasons", label: "Season by season", short: "Seasons" },
+          ...(shots && shotCourt && regular ? [{ id: "shots", label: "Shot map", short: "Shots" }] : []),
+          { id: "highs", label: "Career highs", short: "Highs" },
+          { id: "games", label: "Game log" },
+        ]}
+      />
+
+      <section className="mt-8">
+        <Heading id="seasons">Season by season</Heading>
+        <PlayerSeasons name={p.player_name} seasons={d.seasons} career={d.career} />
       </section>
 
       {shots && shotCourt && regular && (
         <section className="mt-12">
-          <Heading>Shot map</Heading>
+          <Heading id="shots">Shot map</Heading>
           <ShotMap shots={shots} label={`${p.player_name}, ${regular.season}`} caption={`${regular.season} regular season`} />
         </section>
       )}
 
       <section className="mt-12">
-        <Heading>Career highs</Heading>
+        <Heading id="highs">Career highs</Heading>
         <TileRow>
           {HIGHS.map(([k, label, short, tone]) => {
             const h = d.highs[k];
@@ -151,13 +160,8 @@ async function Player({ params }: { params: PageProps<"/players/[id]">["params"]
       </section>
 
       <section className="mt-12">
-        <Heading>Last {d.games.length} games</Heading>
+        <Heading id="games">Game log</Heading>
         <PlayerGames name={p.player_name} games={d.games} />
-      </section>
-
-      <section className="mt-12">
-        <Heading>Dig deeper in the Lab</Heading>
-        <LabLinks links={playerLinks(p.player_name, latest?.season ?? p.last_season)} />
       </section>
     </div>
   );

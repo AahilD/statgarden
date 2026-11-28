@@ -21,7 +21,6 @@ catalog = None
 
 FINAL = 3  # game_status: 1 scheduled, 2 live, 3 final
 ROUNDS = ["First Round", "Conf. Semifinals", "Conf. Finals"]
-CUP_ROUNDS = ["Quarterfinal", "Semifinal", "Championship"]
 
 
 def _names(cur) -> dict[int, str]:
@@ -145,12 +144,99 @@ def cup(season: str | None = None):
             all_done = all(grp["done"] for grp in out_groups if grp["conference"] == conf)
             best["status"] = "wildcard" if all_done else "wildcard_lead"
 
-    knockout = []
-    for r in CUP_ROUNDS:
-        for g in games:
-            if g["cup_round"] == r:
-                knockout.append({"round": r, **_game(g, names)})
+    conf_of = dict(cur.execute("SELECT team_id, conference FROM stg_team_season WHERE season = ?", [season]).fetchall())
+    knockout = _knockout(out_groups, [g for g in games if g["cup_stage"] == "Knockout"], names, conf_of)
     return {"season": season, "seasons": seasons, "groups": out_groups, "knockout": knockout}
+
+
+def _cup_seeds(groups: list[dict], conf: str) -> dict[int, dict]:
+    """Quarterfinal seeds as they stand: group winners 1 to 3 by record, the wild card 4th."""
+    tops = [t for grp in groups if grp["conference"] == conf for t in grp["teams"] if t["rank"] == 1]
+    tops.sort(key=lambda t: (-t["w"], -t["diff"], -t["pf"]))
+    wild = [
+        t
+        for grp in groups
+        if grp["conference"] == conf
+        for t in grp["teams"]
+        if t["status"] in ("wildcard", "wildcard_lead")
+    ]
+    return {i + 1: t for i, t in enumerate(tops + wild[:1])}
+
+
+def _knockout(groups: list[dict], games: list[dict], names: dict[int, str], conf_of: dict) -> list[dict]:
+    """The knockout bracket, slot by slot (East quarterfinals 1v4 and 2v3, then West, the two
+    semifinals, the final). A slot holds its real game once both teams are known; before that,
+    the teams that would be there (from the group tables, or the winners of the round before)."""
+
+    def team(t: dict | None, seed: int | None) -> dict:
+        if not t:
+            return {"id": None, "abbr": None, "name": None, "seed": None, "score": None}
+        return {"id": t["id"], "abbr": t["abbr"], "name": t.get("name"), "seed": seed, "score": t.get("score")}
+
+    def real(rnd: str, conf: str | None, pair: set[int] | None) -> dict | None:
+        """The round's real game in this conference, placed by its own seeds (1v4 or 2v3)."""
+        for g in games:
+            if g["cup_round"] != rnd or not g["home_team_id"] or not g["away_team_id"]:
+                continue
+            if conf and conf_of.get(g["home_team_id"]) != conf:
+                continue
+            if pair and not pair & {g["home_seed"], g["away_seed"]}:
+                continue
+            return g
+        return None
+
+    def round_dates(rnd: str) -> tuple:
+        """The round's first and last day (the quarterfinals are split over two days)."""
+        dates = sorted({g["game_date"] for g in games if g["cup_round"] == rnd})
+        return (dates[0], dates[-1] if len(dates) > 1 else None) if dates else (None, None)
+
+    def slot(rnd: str, conf: str | None, a: dict, b: dict, pair: set[int] | None = None) -> dict:
+        g = real(rnd, conf, pair)
+        if g:
+            x = _game(g, names)
+            a, b = sorted((x["home"], x["away"]), key=lambda t: t["seed"] or 99)
+            if rnd == "Championship" and conf_of.get(b["id"]) == "East":
+                a, b = b, a
+            return {
+                "round": rnd,
+                "conference": conf,
+                "game_id": g["game_id"],
+                "date": g["game_date"],
+                "date_to": None,
+                "status": g["game_status"],
+                "top": a,
+                "bottom": b,
+            }
+        return {
+            "round": rnd,
+            "conference": conf,
+            "game_id": None,
+            "date": round_dates(rnd)[0],
+            "date_to": round_dates(rnd)[1],
+            "status": 1,
+            "top": a,
+            "bottom": b,
+        }
+
+    def winner(s: dict) -> dict:
+        if s["status"] != FINAL:
+            return team(None, None)
+        w = s["top"] if (s["top"]["score"] or 0) > (s["bottom"]["score"] or 0) else s["bottom"]
+        return {**w, "score": None}
+
+    out, semis = [], {}
+    for conf in ("East", "West"):
+        seeds = _cup_seeds(groups, conf)
+        qfs = [
+            slot("Quarterfinal", conf, team(seeds.get(hi), hi), team(seeds.get(lo), lo), {hi, lo})
+            for hi, lo in ((1, 4), (2, 3))
+        ]
+        out += qfs
+        top, bottom = sorted((winner(q) for q in qfs), key=lambda t: t["seed"] or 99)
+        semis[conf] = slot("Semifinal", conf, top, bottom)
+    out += [semis["East"], semis["West"]]
+    out.append(slot("Championship", None, winner(semis["East"]), winner(semis["West"])))
+    return out
 
 
 # ── playoffs ────────────────────────────────────────────────────────────────

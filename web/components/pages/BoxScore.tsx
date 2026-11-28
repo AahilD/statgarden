@@ -1,6 +1,6 @@
 "use client";
 
-// The game page's box score: one table per team, starters first, then the bench under a line.
+// The game page's box score: one table per team, starters first (green bar), then the bench under a line.
 // A client component because the table sorts.
 import Link from "next/link";
 import { StatTable, type Column } from "@/components/pages/StatTable";
@@ -18,7 +18,14 @@ export function BoxScore({ team: t }: { team: GameTeam }) {
       rowClass={(p) => (p.min === 0 ? "text-ink-2" : "")}
       divider={(p) => isFirstBench(t, p)}
       foot={[totalsRow(t)]}
-      note={`Starters first, then the bench by minutes.${t.inactive.length > 0 ? ` Inactive: ${t.inactive.join(", ")}.` : ""}`}
+      note={
+        <span className="mt-1 flex flex-col items-center gap-1.5 text-center">
+          <span className="inline-flex items-center gap-1.5">
+            <i aria-hidden className="h-3 w-1 rounded-full bg-green" /> Starter
+          </span>
+          {t.inactive.length > 0 && <span>Inactive: {t.inactive.join(", ")}</span>}
+        </span>
+      }
     />
   );
 }
@@ -51,14 +58,20 @@ const BOX_COLUMNS: Column<BoxRow>[] = [
     strong: true,
     cell: (p) =>
       p.total ? (
-        "Team"
+        <span className="inline-flex items-center gap-2">
+          <i aria-hidden className="h-3.5 w-1 shrink-0" />
+          Team
+        </span>
       ) : (
-        <>
-          <Link href={`/players/${p.player_id}`} className="hover:underline">
-            {p.player}
-          </Link>
-          {p.pos && <span className="ml-1.5 font-mono text-[10px] text-ink-2">{p.pos}</span>}
-        </>
+        <span className="inline-flex items-center gap-2">
+          <i aria-hidden className={`h-3.5 w-1 shrink-0 rounded-full ${p.is_starter ? "bg-green" : "bg-transparent"}`} />
+          <span>
+            <Link href={`/players/${p.player_id}`} className="hover:underline">
+              {p.player}
+            </Link>
+            {p.pos && <span className="ml-1.5 font-mono text-[10px] text-ink-2">{p.pos}</span>}
+          </span>
+        </span>
       ),
   },
   { key: "min", sort: (p) => p.min, label: "MIN", title: "Minutes", cell: (p) => (p.total ? "" : dnp(p) ? "DNP" : p.min) },

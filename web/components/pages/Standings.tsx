@@ -9,7 +9,7 @@ import { Pills, StatTable, type Column } from "@/components/pages/StatTable";
 import { num1, signed, type TeamListItem } from "@/lib/pages";
 
 type View = "league" | "conference" | "division";
-type Row = TeamListItem & { rank: number; gb: number; pct: number };
+type Row = TeamListItem & { rank: number; gb: number; pct: number; seed?: number };
 
 const VIEWS: { id: View; label: string }[] = [
   { id: "league", label: "All teams" },
@@ -43,21 +43,28 @@ const recordValue = (s: string | null) => {
   return m ? Number(m[1]) / Math.max(1, Number(m[1]) + Number(m[2])) : null;
 };
 
-function columns(conference: boolean): Column<Row>[] {
+/** Conference seed of every team (same order as the conference tables), for the colour bars. */
+const seeds = (teams: TeamListItem[]) =>
+  new Map(["East", "West"].flatMap((c) => ranked(teams.filter((t) => t.conference === c)).map((r) => [r.id, r.rank] as const)));
+
+function columns(bars: boolean): Column<Row>[] {
   return [
     {
       // rank and team in one pinned cell, so the rank stays put when the table scrolls sideways
       key: "team",
       label: "Team",
-      title: conference ? "Seed and team (green: playoff spot, orange: play-in). Sorts by seed." : "Rank and team",
+      title: bars ? "Rank and team (green: playoff spot, orange: play-in, by conference seed)" : "Rank and team",
       text: true,
       sticky: true,
       strong: true,
       sort: (r) => r.rank,
       cell: (r) => (
         <span className="inline-flex items-center gap-2">
-          {conference && (
-            <i aria-hidden className={`h-3.5 w-1 shrink-0 rounded-full ${r.rank <= 6 ? "bg-green" : r.rank <= 10 ? "bg-orange" : "bg-transparent"}`} />
+          {bars && (
+            <i
+              aria-hidden
+              className={`h-3.5 w-1 shrink-0 rounded-full ${(r.seed ?? 99) <= 6 ? "bg-green" : (r.seed ?? 99) <= 10 ? "bg-orange" : "bg-transparent"}`}
+            />
           )}
           <span className="w-5 font-mono text-[11px] font-normal text-ink-2">{r.rank}</span>
           <Link href={`/teams/${r.abbr}`} className="hover:underline">
@@ -84,6 +91,8 @@ function columns(conference: boolean): Column<Row>[] {
 
 export function Standings({ teams }: { teams: TeamListItem[] }) {
   const [view, setView] = useState<View>("conference");
+  const seedOf = seeds(teams);
+  const bars = view !== "league";
   const groups: { name: string; teams: TeamListItem[] }[] =
     view === "league"
       ? [{ name: "League", teams }]
@@ -106,22 +115,22 @@ export function Standings({ teams }: { teams: TeamListItem[] }) {
             {view !== "league" && <Heading>{view === "conference" ? `${g.name}ern Conference` : g.name}</Heading>}
             <StatTable
               caption={`${g.name} standings`}
-              columns={columns(view === "conference")}
-              rows={ranked(g.teams)}
+              columns={columns(bars)}
+              rows={ranked(g.teams).map((r) => ({ ...r, seed: seedOf.get(r.id) }))}
+              center
               rowKey={(r) => String(r.id)}
             />
           </section>
         ))}
       </div>
-      {view === "conference" && (
-        <p className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 font-mono text-[11px] text-ink-2">
+      {bars && (
+        <p className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 font-mono text-[11px] text-ink-2">
           <span className="inline-flex items-center gap-1.5">
             <i aria-hidden className="h-3 w-1 rounded-full bg-green" /> Playoff spot (1–6)
           </span>
           <span className="inline-flex items-center gap-1.5">
             <i aria-hidden className="h-3 w-1 rounded-full bg-orange" /> Play-In (7–10)
           </span>
-          <span>Ties broken by NBA.com&apos;s seeding</span>
         </p>
       )}
     </div>

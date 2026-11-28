@@ -61,7 +61,6 @@ export function TeamsHub(p: { teams: TeamListItem[]; season: string; cup: CupDat
     <div>
       <div className="flex flex-col items-center gap-3">
         <Pills label="Season part" options={views} value={view} onPick={pick} />
-        {view === "regular" && <p className="label-mono">{p.season} regular season</p>}
         {view === "cup" && p.cup && (
           <SeasonPicker
             label="NBA Cup season"

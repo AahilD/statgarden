@@ -1,16 +1,27 @@
 // Building blocks shared by the player, team and glossary pages: the title card, stat tiles,
 // section headings; the stats table (StatTable) is a client component of its own.
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { TONE, type Tone } from "@/lib/tones";
 
 export { Pills, StatTable, type Column } from "./StatTable";
 
-/** Centred, framed twice: the same title card as the home page, for one player or team. */
-export function TitleCard(p: { eyebrow?: ReactNode; title: string; sub?: ReactNode; children?: ReactNode }) {
+/** Centred, framed twice: the same title card as the home page, for one player or team. With
+ * `colors` (a team's), the card gets a stripe of them across the top and a border in the first. */
+export function TitleCard(p: { eyebrow?: ReactNode; title: string; sub?: ReactNode; children?: ReactNode; colors?: string[] }) {
   return (
     <section className="rounded-[14px] border border-line-strong p-1.5 sm:p-2">
-      <div className="rounded-[10px] border border-line-strong bg-surface px-5 py-9 text-center sm:px-10 sm:py-12">
+      <div
+        className={`overflow-hidden rounded-[10px] bg-surface text-center ${p.colors ? "border-2" : "border border-line-strong"}`}
+        style={p.colors ? { borderColor: p.colors[0] } : undefined}
+      >
+        {p.colors && (
+          <div aria-hidden className="flex h-2">
+            {p.colors.map((c) => (
+              <span key={c} className="flex-1" style={{ background: c }} />
+            ))}
+          </div>
+        )}
+        <div className="px-5 py-9 sm:px-10 sm:py-12">
         {p.eyebrow && <div className="label-mono flex flex-wrap items-center justify-center gap-x-2 gap-y-1">{p.eyebrow}</div>}
         <h1 className="title-caps mt-4 text-[clamp(1.9rem,7vw,3.6rem)] leading-[1.05] tracking-[0.12em]">{p.title}</h1>
         {p.sub && (
@@ -19,6 +30,7 @@ export function TitleCard(p: { eyebrow?: ReactNode; title: string; sub?: ReactNo
           </div>
         )}
         {p.children}
+        </div>
       </div>
     </section>
   );
@@ -68,29 +80,11 @@ export function TileRow({ children }: { children: ReactNode }) {
 /** Section heading with a rule either side, like the home page's. */
 export function Heading({ children, id, aside }: { children: ReactNode; id?: string; aside?: ReactNode }) {
   return (
-    <div id={id} className="mb-4 flex scroll-mt-24 items-center gap-4">
+    <div id={id} className="mb-4 flex scroll-mt-32 items-center gap-4">
       <span className="h-px flex-1 bg-line-strong" />
       <h2 className="title-caps text-lg">{children}</h2>
       <span className="h-px flex-1 bg-line-strong" />
       {aside}
-    </div>
-  );
-}
-
-/** Buttons into the Lab with a view already built. */
-export function LabLinks({ links }: { links: { label: string; href: string; tone: Tone }[] }) {
-  return (
-    <div className="flex flex-wrap justify-center gap-2">
-      {links.map((l) => (
-        <Link
-          key={l.label}
-          href={l.href}
-          className="lift inline-flex items-center gap-2 rounded-btn border border-line bg-surface px-3.5 py-2 text-sm hover:border-line-strong"
-        >
-          <i aria-hidden className={`h-2.5 w-2.5 rounded-[2px] ${TONE[l.tone].block}`} />
-          {l.label}
-        </Link>
-      ))}
     </div>
   );
 }

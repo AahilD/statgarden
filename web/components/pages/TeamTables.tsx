@@ -76,15 +76,7 @@ export function Roster(p: { team: string; abbr: string; current: RosterRow[]; go
         columns={ROSTER_COLUMNS}
         rows={p.current}
         rowKey={(r) => String(r.player_id)}
-        leaders
-        note={
-          <>
-            Regular season, per game, most minutes first.
-            <br />
-            To be a leader: at least 5 games played. 3P% also needs at least 1 three-point attempt a game, and TS% at
-            least 3 shots a game, so one hot night doesn&apos;t lead the team.
-          </>
-        }
+        leaders="Leaders need 5 games played; 3P% also 1 three a game, TS% 3 shots a game"
       />
       {p.gone.length > 0 && (
         <div>
@@ -125,7 +117,6 @@ export function TeamSeasons(p: { team: string; seasons: SeasonRow[] }) {
       rows={p.seasons.filter((s) => s.season_type === type)}
       rowKey={(r) => r.season}
       toolbar={types.length > 1 ? <Pills label="Season type" options={types} value={type} onPick={setType} /> : undefined}
-      note="Ratings are per 100 possessions, from season totals."
     />
   );
 }
