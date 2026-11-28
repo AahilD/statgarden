@@ -4,6 +4,7 @@
 // ranked by win % (NBA.com's seed breaks ties); games back is counted within the group shown.
 import Link from "next/link";
 import { useState } from "react";
+import { Heading } from "@/components/pages/Parts";
 import { Pills, StatTable, type Column } from "@/components/pages/StatTable";
 import { num1, signed, type TeamListItem } from "@/lib/pages";
 
@@ -102,13 +103,7 @@ export function Standings({ teams }: { teams: TeamListItem[] }) {
       <div className="mt-8 grid grid-cols-1 gap-10">
         {groups.map((g) => (
           <section key={g.name}>
-            {view !== "league" && (
-              <div className="mb-3 flex items-center gap-4">
-                <span className="h-px flex-1 bg-line-strong" />
-                <h2 className="title-caps text-lg">{view === "conference" ? `${g.name}ern Conference` : g.name}</h2>
-                <span className="h-px flex-1 bg-line-strong" />
-              </div>
-            )}
+            {view !== "league" && <Heading>{view === "conference" ? `${g.name}ern Conference` : g.name}</Heading>}
             <StatTable
               caption={`${g.name} standings`}
               columns={columns(view === "conference")}

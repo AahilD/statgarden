@@ -10,6 +10,8 @@ import re
 
 from fastapi import APIRouter, HTTPException
 
+from api.db import records as _rows
+
 router = APIRouter()
 
 # set by main.py, so this module shares its database and catalog
@@ -30,17 +32,13 @@ _RATES = """
 """
 
 
-def _rows(cur) -> list[dict]:
-    cols = [d[0] for d in cur.description]
-    out = []
-    for r in cur.fetchall():
-        row = {}
-        for c, v in zip(cols, r, strict=True):
-            if isinstance(v, float) and v != v:  # NaN
-                v = None
-            row[c] = str(v) if hasattr(v, "isoformat") else v
-        out.append(row)
-    return out
+# every game plus a second copy of each NBA Cup game typed "NBA Cup", so season tables can
+# show Cup games as their own season type next to the regular season they also count toward
+_WITH_CUP = """(SELECT * FROM {t} UNION ALL
+               SELECT * REPLACE ('NBA Cup' AS season_type) FROM {t} WHERE cup_stage IS NOT NULL)"""
+_PLAYER_GAMES = _WITH_CUP.format(t="fact_player_game")
+_TEAM_GAMES = _WITH_CUP.format(t="fact_team_game")
+_ORDER_TYPES = "CASE season_type WHEN 'Playoffs' THEN 0 WHEN 'Play-In' THEN 1 WHEN 'NBA Cup' THEN 2 ELSE 3 END"
 
 
 # ── players ─────────────────────────────────────────────────────────────────
@@ -74,21 +72,21 @@ def player(player_id: int):
         cur.execute(
             f"""
             WITH by_team AS (
-              SELECT season, season_type, team_abbreviation, min(game_date) AS first FROM fact_player_game
+              SELECT season, season_type, team_abbreviation, min(game_date) AS first FROM {_PLAYER_GAMES}
               WHERE player_id = ? GROUP BY ALL),
             teams AS (
               SELECT season, season_type, string_agg(team_abbreviation, ' / ' ORDER BY first) AS teams
               FROM by_team GROUP BY ALL),
-            t AS (SELECT season, season_type, {_TOTALS} FROM fact_player_game WHERE player_id = ? GROUP BY ALL)
+            t AS (SELECT season, season_type, {_TOTALS} FROM {_PLAYER_GAMES} WHERE player_id = ? GROUP BY ALL)
             SELECT t.*, teams.teams, {_RATES} FROM t JOIN teams USING (season, season_type)
-            ORDER BY season DESC, CASE season_type WHEN 'Playoffs' THEN 0 WHEN 'Play-In' THEN 1 ELSE 2 END""",
+            ORDER BY season DESC, {_ORDER_TYPES}""",
             [player_id, player_id],
         )
     )
     career = _rows(
         cur.execute(
             f"""
-            WITH t AS (SELECT season_type, {_TOTALS} FROM fact_player_game WHERE player_id = ? GROUP BY ALL)
+            WITH t AS (SELECT season_type, {_TOTALS} FROM {_PLAYER_GAMES} WHERE player_id = ? GROUP BY ALL)
             SELECT *, {_RATES} FROM t ORDER BY season_type DESC""",
             [player_id],
         )
@@ -96,8 +94,8 @@ def player(player_id: int):
     games = _rows(
         cur.execute(
             """
-            SELECT game_id, game_date, season, season_type, team_abbreviation AS team, opp_abbreviation AS opp,
-                   is_home, is_win, margin, min, pts, reb, ast, stl, blk, tov,
+            SELECT game_id, game_date, season, season_type, cup_stage, team_abbreviation AS team,
+                   opp_abbreviation AS opp, is_home, is_win, margin, min, pts, reb, ast, stl, blk, tov,
                    fgm, fga, fg3m, fg3a, ftm, fta, plus_minus
             FROM fact_player_game WHERE player_id = ? ORDER BY game_date DESC LIMIT 15""",
             [player_id],
@@ -109,7 +107,7 @@ def player(player_id: int):
         h = _rows(
             cur.execute(
                 f"""
-                SELECT {stat} AS value, game_date, opp_abbreviation AS opp, is_home, season_type
+                SELECT {stat} AS value, game_id, game_date, opp_abbreviation AS opp, is_home, season_type
                 FROM fact_player_game WHERE player_id = ? ORDER BY {stat} DESC NULLS LAST, game_date DESC LIMIT 1""",
                 [player_id],
             )
@@ -158,7 +156,7 @@ def team(abbr: str):
     # rating per 100 possessions from season sums, not an average of game ratings
     seasons = _rows(
         cur.execute(
-            """
+            f"""
             SELECT season, season_type, any_value(team_abbreviation) AS team, count(*) AS gp,
                    count(*) FILTER (WHERE is_win) AS wins, count(*) FILTER (WHERE NOT is_win) AS losses,
                    avg(pts) AS pts, avg(opp_pts) AS opp_pts,
@@ -167,8 +165,8 @@ def team(abbr: str):
                    100 * (sum(pts) / nullif(sum(poss), 0) - sum(opp_pts) / nullif(sum(opp_poss), 0)) AS net_rtg,
                    avg(pace) AS pace, sum(fg3a) / nullif(sum(fga), 0) AS fg3a_rate,
                    sum(pts) / nullif(2 * (sum(fga) + 0.44 * sum(fta)), 0) AS ts_pct
-            FROM fact_team_game WHERE team_id = ? GROUP BY season, season_type
-            ORDER BY season DESC, CASE season_type WHEN 'Playoffs' THEN 0 WHEN 'Play-In' THEN 1 ELSE 2 END""",
+            FROM {_TEAM_GAMES} WHERE team_id = ? GROUP BY season, season_type
+            ORDER BY season DESC, {_ORDER_TYPES}""",
             [team_id],
         )
     )
@@ -190,7 +188,7 @@ def team(abbr: str):
     games = _rows(
         cur.execute(
             """
-            SELECT game_id, game_date, season_type, opp_abbreviation AS opp, is_home, is_win, pts, opp_pts
+            SELECT game_id, game_date, season_type, cup_stage, opp_abbreviation AS opp, is_home, is_win, pts, opp_pts
             FROM fact_team_game WHERE team_id = ? ORDER BY game_date DESC LIMIT 12""",
             [team_id],
         )

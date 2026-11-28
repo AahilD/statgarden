@@ -3,7 +3,7 @@
 // The stats table on player, team and game pages. Scrolls sideways on phones with the first
 // column pinned. Columns with a `sort` sort on click (low to high, high to low, back to the
 // table's own order: lib/sortCycle, same as the Lab), and columns with a `leader` can light up
-// the best number in each column.
+// the best number in each column (solid forest green).
 import { useMemo, useState, type ReactNode } from "react";
 import { nextSort, type SortState } from "@/lib/sortCycle";
 
@@ -76,11 +76,12 @@ export function StatTable<R>(p: {
     return b !== undefined && c.sort!(r) === b && (!c.eligible || c.eligible(r));
   };
 
-  const cellCls = (c: Column<R>, head = false) =>
+  // header and total rows get their own shade (and so do their pinned cells)
+  const cellCls = (c: Column<R>, head = false, shaded = head) =>
     [
       "whitespace-nowrap px-3 py-2",
       c.text ? "text-left" : "text-right font-mono tabular-nums",
-      c.sticky ? "sticky left-0 z-[1] bg-surface" : "",
+      c.sticky ? `sticky left-0 z-[1] ${shaded ? "bg-table-head" : "bg-surface"}` : "",
       c.strong && !head ? "font-medium text-ink" : "",
     ].join(" ");
 
@@ -101,7 +102,7 @@ export function StatTable<R>(p: {
         <table className="w-full border-collapse text-[13px]">
           {p.caption && <caption className="sr-only">{p.caption}</caption>}
           <thead>
-            <tr className="border-b border-line-strong">
+            <tr className="border-b border-line-strong bg-table-head">
               {p.columns.map((c) => {
                 const on = sort?.by === c.key;
                 return (
@@ -141,7 +142,7 @@ export function StatTable<R>(p: {
                 }`}
               >
                 {p.columns.map((c) => (
-                  <td key={c.key} className={`${cellCls(c)} ${leads(c, r) ? "bg-orange-soft font-medium text-ink" : ""}`}>
+                  <td key={c.key} className={`${cellCls(c)} ${leads(c, r) ? "!bg-green font-medium !text-on-color" : ""}`}>
                     {c.cell(r)}
                   </td>
                 ))}
@@ -151,9 +152,9 @@ export function StatTable<R>(p: {
           {p.foot && p.foot.length > 0 && (
             <tfoot>
               {p.foot.map((r) => (
-                <tr key={p.rowKey(r)} className="border-t border-line-strong">
+                <tr key={p.rowKey(r)} className="border-t border-line-strong bg-table-head">
                   {p.columns.map((c) => (
-                    <td key={c.key} className={`${cellCls(c)} font-medium text-ink`}>
+                    <td key={c.key} className={`${cellCls(c, false, true)} font-medium text-ink`}>
                       {c.cell(r)}
                     </td>
                   ))}

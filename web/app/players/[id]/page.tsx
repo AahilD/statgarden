@@ -120,9 +120,8 @@ async function Player({ params }: { params: PageProps<"/players/[id]">["params"]
         <TileRow>
           {HIGHS.map(([k, label, short, tone]) => {
             const h = d.highs[k];
-            return (
+            const tile = (
               <Tile
-                key={k}
                 compact
                 tone={tone}
                 label={label}
@@ -138,6 +137,14 @@ async function Player({ params }: { params: PageProps<"/players/[id]">["params"]
                   )
                 }
               />
+            );
+            // each high opens the game it came from
+            return h ? (
+              <Link key={k} href={`/games/${h.game_id}`} className="lift block" aria-label={`${label} high: ${h.value}, box score`}>
+                {tile}
+              </Link>
+            ) : (
+              <div key={k}>{tile}</div>
             );
           })}
         </TileRow>

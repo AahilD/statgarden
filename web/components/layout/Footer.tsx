@@ -1,9 +1,8 @@
-// The site footer, the same on every page: centred like the title cards, so it lines up the
-// same whether the page above is the full-width Lab or a narrower player page.
+// The site footer, the same on every page: logo, any outside links (lib/site.ts) and the data
+// credit. The pages are in the header, so they aren't repeated here. Centred like the title cards.
 import Link from "next/link";
 import { Mark, Stripes, Wordmark } from "@/components/layout/Brand";
-import { FOOTER_ELSEWHERE, FOOTER_PAGES } from "@/lib/site";
-import { TONE } from "@/lib/tones";
+import { FOOTER_ELSEWHERE } from "@/lib/site";
 
 export function Footer() {
   return (
@@ -13,21 +12,6 @@ export function Footer() {
           <Mark />
           <Wordmark />
         </Link>
-        <p className="max-w-[420px] text-sm text-ink-2">NBA stats you can pivot, chart and share.</p>
-
-        <nav aria-label="Footer" className="flex flex-wrap justify-center gap-2">
-          {FOOTER_PAGES.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              className="lift inline-flex items-center gap-2 rounded-btn border border-line bg-surface px-3.5 py-2 text-sm hover:border-line-strong"
-            >
-              <i aria-hidden className={`h-2.5 w-2.5 rounded-[2px] ${TONE[l.tone].block}`} />
-              {l.label}
-            </Link>
-          ))}
-        </nav>
-
         {FOOTER_ELSEWHERE.length > 0 && (
           <ul aria-label="Elsewhere" className="flex flex-wrap justify-center gap-2">
             {FOOTER_ELSEWHERE.map((l) => (

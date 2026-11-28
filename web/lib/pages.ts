@@ -46,7 +46,7 @@ export type BoxTotals = {
   ts_pct: number | null;
 };
 
-export type SeasonType = "Regular Season" | "Play-In" | "Playoffs";
+export type SeasonType = "Regular Season" | "Play-In" | "Playoffs" | "NBA Cup";
 
 export type PlayerPage = {
   player: {
@@ -80,6 +80,7 @@ export type GameLine = {
   game_date: string;
   season: string;
   season_type: SeasonType;
+  cup_stage: "Group stage" | "Knockout" | null;
   team: string;
   opp: string;
   is_home: boolean;
@@ -101,7 +102,7 @@ export type GameLine = {
   plus_minus: number;
 };
 
-export type High = { value: number; game_date: string; opp: string; is_home: boolean; season_type: SeasonType };
+export type High = { value: number; game_id: string; game_date: string; opp: string; is_home: boolean; season_type: SeasonType };
 
 export type TeamPage = {
   team: { id: number; abbr: string; name: string; season: string; conference?: string; division?: string };
@@ -144,6 +145,7 @@ export type TeamPage = {
     game_id: string;
     game_date: string;
     season_type: SeasonType;
+    cup_stage: "Group stage" | "Knockout" | null;
     opp: string;
     is_home: boolean;
     is_win: boolean;
@@ -289,16 +291,17 @@ export function easternTime(et: string | null | undefined) {
   return `${((h + 11) % 12) + 1}:${m[2]} ${h < 12 ? "AM" : "PM"} ET`;
 }
 
-/** Short season type for tight columns. */
-export const TYPE_SHORT: Record<SeasonType, string> = {
-  "Regular Season": "Reg",
-  "Play-In": "Play-In",
-  Playoffs: "Playoffs",
-};
-
 /** 1 → 1st, 2 → 2nd, 11 → 11th */
 export function ordinal(n: number) {
   const s = ["th", "st", "nd", "rd"];
   const v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+/** The small tag on a game: Playoffs, Play-In or NBA Cup; nothing for a plain regular-season game. */
+export function gameTag(g: { season_type: SeasonType; cup_stage?: string | null }) {
+  if (g.season_type === "Playoffs") return "Playoffs";
+  if (g.season_type === "Play-In") return "Play-In";
+  if (g.cup_stage) return g.cup_stage === "Knockout" ? "Cup KO" : "Cup";
+  return null;
 }

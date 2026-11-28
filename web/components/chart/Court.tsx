@@ -4,9 +4,9 @@
 //         around that spot (heatDiffs)
 //   fga / fg: a heat map, light red to dark red, of where they shoot from or where they're hot
 import { useId } from "react";
+import { pct } from "@/lib/pages";
 import { CELL, centre, FG_LABELS, HEAT, heatDiffs, heatFill, heatGrid, REDS, type CourtData, type CourtMode } from "@/lib/court";
 
-const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
 
 export function Court(p: { court: CourtData; hex: number; label?: string; mode?: CourtMode }) {
   const { court, hex: s } = p;

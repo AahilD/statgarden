@@ -42,6 +42,8 @@ select
     ts.conference,
     ots.conference                                          as opp_conference,
     t.game_date > ts.all_star_date                          as is_post_all_star,
+    sg.cup_stage,
+    sg.cup_group,
     t.* exclude (team_id, team_abbreviation, game_id, game_date, season, season_type, is_home, is_win, margin),
     t.margin                                                as plus_minus,
     {%- for c in ['pts', 'fgm', 'fga', 'fg3m', 'fg3a', 'ftm', 'fta', 'oreb', 'dreb', 'reb',
@@ -53,5 +55,6 @@ from team t
 join team o on o.game_id = t.game_id and o.team_id <> t.team_id
 join {{ ref('int_team_game_context') }} tg  on tg.game_id = t.game_id and tg.team_id = t.team_id
 join {{ ref('int_team_game_context') }} otg on otg.game_id = t.game_id and otg.team_id = o.team_id
+left join {{ ref('stg_schedule_game') }} sg on sg.game_id = t.game_id
 left join {{ ref('stg_team_season') }} ts  on ts.team_id = t.team_id and ts.season = t.season
 left join {{ ref('stg_team_season') }} ots on ots.team_id = o.team_id and ots.season = t.season

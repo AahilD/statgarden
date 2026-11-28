@@ -47,3 +47,17 @@ class Database:
     @property
     def updated_at(self) -> float:
         return self.path.stat().st_mtime
+
+
+def records(cur) -> list[dict]:
+    """The cursor's result as a list of dicts, JSON-ready: dates as text, NaN as None."""
+    cols = [d[0] for d in cur.description]
+    out = []
+    for r in cur.fetchall():
+        row = {}
+        for c, v in zip(cols, r, strict=True):
+            if isinstance(v, float) and v != v:  # NaN
+                v = None
+            row[c] = str(v) if hasattr(v, "isoformat") else v
+        out.append(row)
+    return out

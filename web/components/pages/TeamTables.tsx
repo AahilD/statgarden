@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { typesIn } from "@/components/pages/PlayerTables";
 import { Pills, StatTable, type Column } from "@/components/pages/StatTable";
-import { num1, pct, perGame, shortDate, signed, type SeasonType, type TeamPage } from "@/lib/pages";
+import { gameTag, num1, pct, perGame, shortDate, signed, type SeasonType, type TeamPage } from "@/lib/pages";
 
 type RosterRow = TeamPage["roster"][number];
 type SeasonRow = TeamPage["seasons"][number];
@@ -77,7 +77,14 @@ export function Roster(p: { team: string; abbr: string; current: RosterRow[]; go
         rows={p.current}
         rowKey={(r) => String(r.player_id)}
         leaders
-        note="Regular season, per game, most minutes first. Leaders need 5 games; 3P% and TS% need real volume."
+        note={
+          <>
+            Regular season, per game, most minutes first.
+            <br />
+            To be a leader: at least 5 games played. 3P% also needs at least 1 three-point attempt a game, and TS% at
+            least 3 shots a game, so one hot night doesn&apos;t lead the team.
+          </>
+        }
       />
       {p.gone.length > 0 && (
         <div>
@@ -159,9 +166,7 @@ export function RecentGames({ games }: { games: GameRow[] }) {
               <span className="font-mono text-[11px] tabular-nums text-ink-2">
                 {g.pts}–{g.opp_pts}
               </span>
-              {g.season_type !== "Regular Season" && (
-                <span className="font-mono text-[9px] uppercase text-ink-2">{g.season_type === "Playoffs" ? "Playoffs" : "Play-In"}</span>
-              )}
+              {gameTag(g) && <span className="font-mono text-[9px] uppercase text-ink-2">{gameTag(g)}</span>}
             </Link>
           </li>
         ))}

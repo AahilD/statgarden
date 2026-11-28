@@ -1,6 +1,7 @@
 import { cacheLife } from "next/cache";
 import Link from "next/link";
 import { Mark, Wordmark } from "@/components/layout/Brand";
+import { Heading } from "@/components/pages/Parts";
 import type { QueryResult } from "@/lib/api";
 import { formatValue } from "@/lib/format";
 import { encodeSpec, SpecSchema, type PivotSpec } from "@/lib/spec";
@@ -110,12 +111,8 @@ export default async function Home() {
 
       {/* Starter plots */}
       <section id="starters" className="mx-auto mt-16 max-w-[1100px] scroll-mt-24">
-        <div className="flex items-center gap-4">
-          <span className="h-px flex-1 bg-line-strong" />
-          <h2 className="title-caps text-lg">Starter plots</h2>
-          <span className="h-px flex-1 bg-line-strong" />
-        </div>
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        <Heading>Starter plots</Heading>
+        <div className="mt-2 grid gap-4 sm:grid-cols-2">
           {cards.map((ex) => (
             <Link
               key={ex.title}

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { cacheLife } from "next/cache";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { Dot, Heading, LabLinks, Tile, TitleCard } from "@/components/pages/Parts";
@@ -51,9 +52,9 @@ async function Team({ params }: { params: PageProps<"/teams/[abbr]">["params"] }
         sub={
           st ? (
             <>
-              <span className="text-ink">
+              <Link href="/teams" className="text-ink underline decoration-line-strong underline-offset-4 hover:decoration-orange">
                 {ordinal(Number(st.playoff_rank))} in the {st.conference}
-              </span>
+              </Link>
               <Dot />
               <span>Last 10: {st.l10}</span>
               <Dot />

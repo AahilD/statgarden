@@ -4,14 +4,20 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Pills, StatTable, type Column } from "@/components/pages/StatTable";
-import { pct, perGame, shortDate, signed, type GameLine, type PlayerPage, type SeasonType } from "@/lib/pages";
+import { gameTag, pct, perGame, shortDate, signed, type GameLine, type PlayerPage, type SeasonType } from "@/lib/pages";
 
 type SeasonRow = PlayerPage["seasons"][number];
 type CareerRow = PlayerPage["career"][number];
 type Row = SeasonRow | (CareerRow & { season: string; teams: string });
 
-const TYPE_ORDER: SeasonType[] = ["Regular Season", "Playoffs", "Play-In"];
-const TYPE_LABEL: Record<SeasonType, string> = { "Regular Season": "Regular season", Playoffs: "Playoffs", "Play-In": "Play-In" };
+// NBA Cup games also count in the regular season; the Cup tab shows just those games
+const TYPE_ORDER: SeasonType[] = ["Regular Season", "NBA Cup", "Playoffs", "Play-In"];
+const TYPE_LABEL: Record<SeasonType, string> = {
+  "Regular Season": "Regular season",
+  "NBA Cup": "NBA Cup",
+  Playoffs: "Playoffs",
+  "Play-In": "Play-In",
+};
 
 /** The season types this player has, in the usual order, for a Regular season / Playoffs switch. */
 export function typesIn(rows: { season_type: SeasonType }[]) {
@@ -66,6 +72,7 @@ export function PlayerSeasons(p: { name: string; seasons: SeasonRow[]; career: C
   const [type, setType] = useState<SeasonType>(types[0]?.id ?? "Regular Season");
   const rows = p.seasons.filter((s) => s.season_type === type);
   const career = p.career.filter((c) => c.season_type === type).map((c) => ({ ...c, season: "Career", teams: "" }));
+  const cupNote = type === "NBA Cup" ? " NBA Cup group and knockout games (they count in the regular season too; the final doesn't)." : "";
   return (
     <StatTable
       caption={`${p.name} season by season, ${TYPE_LABEL[type].toLowerCase()}, per game`}
@@ -74,7 +81,7 @@ export function PlayerSeasons(p: { name: string; seasons: SeasonRow[]; career: C
       rowKey={(r) => r.season}
       foot={career}
       toolbar={types.length > 1 ? <Pills label="Season type" options={types} value={type} onPick={setType} /> : undefined}
-      note={`Per game. Career adds up every season loaded so far (${p.firstSeason} on).`}
+      note={`Per game.${cupNote} Career adds up every season loaded so far (${p.firstSeason} on).`}
     />
   );
 }
@@ -105,9 +112,7 @@ const GAME_COLUMNS: Column<GameLine>[] = [
         <Link href={`/teams/${g.opp}`} className="hover:underline">
           {g.opp}
         </Link>
-        {g.season_type !== "Regular Season" && (
-          <span className="ml-1.5 font-mono text-[10px] uppercase text-ink-2">{g.season_type === "Playoffs" ? "Playoffs" : "Play-In"}</span>
-        )}
+        {gameTag(g) && <span className="ml-1.5 font-mono text-[10px] uppercase text-ink-2">{gameTag(g)}</span>}
       </>
     ),
   },

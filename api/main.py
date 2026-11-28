@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi import Query as Q
 from pydantic import BaseModel
 
-from api import court, pages
+from api import brackets, court, pages
 from api.catalog import load_catalog, mark_available, modes_in
 from api.db import Database
 from api.spec import PivotSpec
@@ -43,8 +43,10 @@ def _on_swap(con) -> None:
 db.on_swap.append(_on_swap)
 pages.db, pages.catalog = db, catalog
 court.db, court.catalog = db, catalog
+brackets.db, brackets.catalog = db, catalog
 app.include_router(pages.router)
 app.include_router(court.router)
+app.include_router(brackets.router)
 
 
 def _clean(v):

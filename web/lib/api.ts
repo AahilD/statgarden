@@ -1,5 +1,6 @@
 // Typed calls to the FastAPI service (proxied at /api by next.config.ts).
 import type { Mode } from "./spec";
+import type { CupData, PlayoffData } from "./brackets";
 import type { CourtResult } from "./court";
 import type { QuerySpec } from "./specOps";
 
@@ -101,6 +102,8 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ formula, dataset }),
     }),
+  cup: (season: string) => get<CupData>(`/cup?season=${encodeURIComponent(season)}`),
+  playoffs: (season: string) => get<PlayoffData>(`/playoffs?season=${encodeURIComponent(season)}`),
   court: (spec: QuerySpec) =>
     request<CourtResult>("/court", {
       method: "POST",

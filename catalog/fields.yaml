@@ -267,6 +267,31 @@ fields:
     source: schedule
     description: Whether the game was after that season's All-Star game.
 
+  - id: cup_stage
+    label: NBA Cup
+    short: Cup
+    group: Game
+    kind: dimension
+    type: bucket
+    bins: [Group stage, Knockout, Not Cup]
+    expr: "coalesce(cup_stage, 'Not Cup')"
+    source: schedule
+    description: >-
+      Whether the game was an NBA Cup game: a group-stage game, a knockout game (quarterfinal or
+      semifinal), or neither. Cup games count as regular-season games; the Cup final doesn't
+      count toward stats, so it isn't here.
+
+  - id: cup_group
+    label: NBA Cup group
+    short: Cup grp
+    group: Game
+    kind: dimension
+    type: bucket
+    bins: [East Group A, East Group B, East Group C, West Group A, West Group B, West Group C, Other games]
+    expr: "coalesce(cup_group, 'Other games')"
+    source: schedule
+    description: The NBA Cup group the game was played in. Knockout and non-Cup games are "Other games".
+
   - id: game_number_bucket
     label: Team game number
     short: Game #

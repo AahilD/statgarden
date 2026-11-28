@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { cacheLife } from "next/cache";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 import { BoxScore } from "@/components/pages/BoxScore";
 import { Dot, Heading, TitleCard } from "@/components/pages/Parts";
 import {
@@ -49,6 +49,12 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
   // "Neutral Site" is what the summary puts in the series text for those games
   const series = g.series && g.series !== "Neutral Site" ? g.series : null;
   const ots = Math.max(away.periods.length, home.periods.length) - 4;
+  // Cup and playoff games link to their bracket on the teams page
+  const bracket = g.label?.includes("NBA Cup")
+    ? `/teams?view=cup&season=${g.season}`
+    : g.season_type !== "Regular Season"
+      ? `/teams?view=playoffs&season=${g.season}`
+      : null;
 
   return (
     <div className="mx-auto max-w-[1100px] px-4 pt-8 sm:pt-12">
@@ -56,7 +62,13 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
         title={`${away.abbr} at ${home.abbr}`}
         eyebrow={
           <>
-            <span>{g.label ?? g.season_type}</span>
+            {bracket ? (
+              <Link href={bracket} className="underline decoration-line-strong underline-offset-4 hover:decoration-orange">
+                {g.label ?? g.season_type}
+              </Link>
+            ) : (
+              <span>{g.label ?? g.season_type}</span>
+            )}
             {g.sub_label && <><Dot /><span>{g.sub_label}</span></>}
             <Dot />
             <span>{shortDate(g.date, true)}</span>
@@ -130,7 +142,7 @@ function LineScore({ away, home }: { away: GameTeam; home: GameTeam }) {
       <table className="w-full border-collapse font-mono text-[13px] tabular-nums">
         <caption className="sr-only">Points by quarter</caption>
         <thead>
-          <tr className="border-b border-line-strong text-[11px] uppercase tracking-wide text-ink-2">
+          <tr className="border-b border-line-strong bg-table-head text-[11px] uppercase tracking-wide text-ink-2">
             <th scope="col" className="px-3 py-2 text-left font-normal">Team</th>
             {Array.from({ length: n }, (_, i) => (
               <th key={i} scope="col" className="px-2 py-2 text-right font-normal">{label(i)}</th>
@@ -159,7 +171,7 @@ function LineScore({ away, home }: { away: GameTeam; home: GameTeam }) {
 const made = (m: number, a: number) => `${m}-${a}`;
 const ratio = (m: number, a: number) => (a ? m / a : null);
 
-/** Away on the left, home on the right, the label between; the better side of each row in full ink. */
+/** Away on the left, home on the right, the label between; the better side of each row on a green chip. */
 function Compare({ away, home }: { away: GameTeam; home: GameTeam }) {
   const rows: { label: string; a: string; h: string; av: number | null; hv: number | null; lowWins?: boolean }[] = [
     { label: "Field goals", a: `${made(away.fgm, away.fga)} · ${pct(ratio(away.fgm, away.fga))}`, h: `${made(home.fgm, home.fga)} · ${pct(ratio(home.fgm, home.fga))}`, av: ratio(away.fgm, away.fga), hv: ratio(home.fgm, home.fga) },
@@ -181,7 +193,7 @@ function Compare({ away, home }: { away: GameTeam; home: GameTeam }) {
   const better = (x: number | null, y: number | null, low?: boolean) => x != null && y != null && (low ? x < y : x > y);
   return (
     <div className="mx-auto max-w-[640px] rounded-card border border-line bg-surface">
-      <div className="grid grid-cols-[1fr_auto_1fr] border-b border-line-strong px-4 py-2 font-mono text-[11px] uppercase tracking-wide text-ink-2">
+      <div className="grid grid-cols-[1fr_auto_1fr] rounded-t-card border-b border-line-strong bg-table-head px-4 py-2 font-mono text-[11px] uppercase tracking-wide text-ink-2">
         <span>{away.abbr}</span>
         <span />
         <span className="text-right">{home.abbr}</span>
@@ -189,15 +201,28 @@ function Compare({ away, home }: { away: GameTeam; home: GameTeam }) {
       <dl>
         {rows.map((r) => (
           <div key={r.label} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-line px-4 py-2 text-[13px] last:border-0">
-            <dd className={`font-mono tabular-nums ${better(r.av, r.hv, r.lowWins) ? "font-medium text-ink" : "text-ink-2"}`}>{r.a}</dd>
+            <dd className="font-mono tabular-nums">
+              <Better on={better(r.av, r.hv, r.lowWins)}>{r.a}</Better>
+            </dd>
             <dt className="text-center text-xs text-ink-2">{r.label}</dt>
-            <dd className={`text-right font-mono tabular-nums ${better(r.hv, r.av, r.lowWins) ? "font-medium text-ink" : "text-ink-2"}`}>{r.h}</dd>
+            <dd className="text-right font-mono tabular-nums">
+              <Better on={better(r.hv, r.av, r.lowWins)}>{r.h}</Better>
+            </dd>
           </div>
         ))}
       </dl>
-      <p className="border-t border-line px-4 py-2 text-center font-mono text-[11px] text-ink-2">
+      <p className="rounded-b-card border-t border-line-strong bg-table-head px-4 py-2 text-center font-mono text-[11px] text-ink-2">
         Pace {num1(away.pace)} possessions per 48 minutes
       </p>
     </div>
+  );
+}
+
+/** The better number of a pair: solid forest green, like the leaders on team pages. */
+function Better({ on, children }: { on: boolean; children: ReactNode }) {
+  return on ? (
+    <span className="rounded-chip bg-green px-1.5 py-0.5 font-medium text-on-color">{children}</span>
+  ) : (
+    <span className="text-ink-2">{children}</span>
   );
 }

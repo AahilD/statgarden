@@ -95,10 +95,6 @@ export function removeFilterAt(spec: PivotSpec, index: number): PivotSpec {
   return { ...spec, filters: spec.filters.filter((_, i) => i !== index) };
 }
 
-export function setFilter(spec: PivotSpec, field: string, patch: Partial<Filter>): PivotSpec {
-  return { ...spec, filters: spec.filters.map((f) => (f.field === field ? { ...f, ...patch } : f)) };
-}
-
 export function filterValue(spec: PivotSpec, field: string): unknown[] {
   const f = spec.filters.find((x) => x.field === field);
   return f && Array.isArray(f.value) ? f.value : [];
@@ -138,10 +134,6 @@ export function forQuery(spec: PivotSpec): QuerySpec {
   const { v, dataset, rows, columns, calcs, sort, limit } = spec;
   const values = spec.values.map(({ field, mode }) => ({ field, mode }));
   return { v, dataset, filters: spec.filters.filter(isComplete), rows, columns, values, calcs, sort, limit };
-}
-
-export function clearChart(spec: PivotSpec, well: ChartWell): PivotSpec {
-  return { ...spec, chart: { ...spec.chart, [well]: null } };
 }
 
 export function setView(spec: PivotSpec, view: ChartView): PivotSpec {

@@ -95,12 +95,3 @@ export function LabLinks({ links }: { links: { label: string; href: string; tone
   );
 }
 
-/** Not-found body for a player or team that isn't in the data. */
-export function Missing({ what }: { what: string }) {
-  return (
-    <div className="mx-auto max-w-[640px] px-4 py-24 text-center">
-      <h1 className="title-caps text-2xl">No such {what}</h1>
-      <p className="mt-3 text-sm text-ink-2">It may be from a season that isn&apos;t loaded yet. Try the search at the top.</p>
-    </div>
-  );
-}

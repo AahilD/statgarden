@@ -34,6 +34,8 @@ select
     ts.conference,
     ots.conference                                                  as opp_conference,
     d.game_date > ts.all_star_date                                  as is_post_all_star,
+    sg.cup_stage,
+    sg.cup_group,
     bio.age, bio.height_in, bio.position,
     abio.height_in                                                  as attacker_height_in,
     abio.position                                                   as attacker_position,
@@ -57,6 +59,7 @@ join {{ ref('int_team_game_context') }} a
 join {{ ref('int_team_game_context') }} d
   on d.game_id = m.gameId and d.team_id <> a.team_id
 left join names an on an.player_id = cast(m.parent_personId as bigint)
+left join {{ ref('stg_schedule_game') }} sg on sg.game_id = d.game_id
 left join {{ ref('stg_team_season') }} ts  on ts.team_id = d.team_id and ts.season = d.season
 left join {{ ref('stg_team_season') }} ots on ots.team_id = a.team_id and ots.season = d.season
 left join {{ ref('stg_player_season_bio') }} bio  on bio.player_id = cast(m.personId as bigint) and bio.season = d.season
